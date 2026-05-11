@@ -10,6 +10,7 @@ import {
   verifySubscription,
 } from '../services/api/subscriptionService'
 import { getDeviceIdentity, getDeviceLabel } from '../services/auth/deviceIdentity'
+import { subscribeRealtimeEvent } from '../services/realtimeSync'
 import type { SubscriptionStatus } from '../types/osmani'
 
 function formatPrice(amount: number | null, currency: string | null) {
@@ -175,9 +176,11 @@ export function AccountPage() {
     }
   }, [deviceCopyNotice])
 
-  const loadAccount = useCallback(async () => {
-    setAccountLoading(true)
-    setAccountError('')
+  const loadAccount = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) {
+      setAccountLoading(true)
+      setAccountError('')
+    }
 
     try {
       const { deviceId, deviceFingerprint } = await getDeviceIdentity()
@@ -185,18 +188,82 @@ export function AccountPage() {
       const status = await verifySubscription(deviceId, deviceFingerprint)
       setSubscription(status)
     } catch (error) {
-      setAccountError(
-        error instanceof Error ? error.message : 'Imeshindwa kupakia akaunti.',
-      )
+      if (!silent || !subscription) {
+        setAccountError(
+          error instanceof Error ? error.message : 'Imeshindwa kupakia akaunti.',
+        )
+      }
     } finally {
       setAccountLoading(false)
     }
-  }, [])
+  }, [subscription])
 
   useEffect(() => {
     queueMicrotask(() => {
-      void loadAccount()
+      void loadAccount({ silent: false })
     })
+  }, [loadAccount])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return
+    }
+
+    const refresh = () => {
+      void loadAccount({ silent: true })
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refresh()
+      }
+    }
+
+    window.addEventListener('focus', refresh)
+    window.addEventListener('pageshow', refresh)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.removeEventListener('focus', refresh)
+      window.removeEventListener('pageshow', refresh)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [loadAccount])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        void loadAccount({ silent: true })
+      }
+    }, 15000)
+
+    return () => {
+      window.clearInterval(interval)
+    }
+  }, [loadAccount])
+
+  useEffect(() => {
+    const refresh = () => {
+      void loadAccount({ silent: true })
+    }
+
+    const subscriptions = [
+      subscribeRealtimeEvent('subscription_revoked', refresh),
+      subscribeRealtimeEvent('transfer_requested', refresh),
+      subscribeRealtimeEvent('transfer_confirmation_required', refresh),
+      subscribeRealtimeEvent('transfer_pending', refresh),
+      subscribeRealtimeEvent('transfer_approved', refresh),
+      subscribeRealtimeEvent('transfer_rejected', refresh),
+      subscribeRealtimeEvent('transfer_completed', refresh),
+      subscribeRealtimeEvent('app_settings_changed', refresh),
+    ]
+
+    return () => {
+      subscriptions.forEach((unsubscribe) => unsubscribe())
+    }
   }, [loadAccount])
 
   const paymentValue = useMemo(() => {

@@ -45,6 +45,7 @@ function resolveBaseUrl(rawBaseUrl: string) {
 const withJsonHeaders = (init: RequestInit = {}) => {
   const headers = new Headers(init.headers)
   const token = getSessionToken()
+  const method = String(init.method || 'GET').toUpperCase()
 
   if (!headers.has('Accept')) {
     headers.set('Accept', 'application/json')
@@ -60,6 +61,7 @@ const withJsonHeaders = (init: RequestInit = {}) => {
 
   return {
     ...init,
+    cache: init.cache ?? (method === 'GET' ? 'no-store' : undefined),
     credentials: init.credentials ?? (env.useCredentials ? 'include' : 'same-origin'),
     headers,
   }
