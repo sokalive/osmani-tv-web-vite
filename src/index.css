@@ -996,25 +996,26 @@ svg {
 }
 
 .account-screen--strict {
-  gap: 12px;
+  gap: 0;
 }
 
 .account-screen__header--strict {
   align-items: flex-start;
-  margin-bottom: 8px;
+  margin-bottom: 20px;
 }
 
 .account-screen__back {
-  width: 24px;
-  height: 24px;
-  padding: 0;
+  width: 26px;
+  height: 26px;
+  padding: 4px 8px 4px 0;
+  margin-right: 4px;
   color: var(--white);
   background: transparent;
 }
 
 .account-screen__back svg {
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   stroke: currentColor;
   fill: none;
   stroke-width: 1.8;
@@ -1032,18 +1033,29 @@ svg {
 .account-screen__header-copy {
   display: grid;
   gap: 4px;
+  justify-content: center;
 }
 
 .account-screen__header-copy h1 {
-  font-size: 1.05rem;
-  line-height: 1.3;
+  margin: 0;
+  font-size: 17px;
+  line-height: 22px;
+  font-weight: 700;
 }
 
-.account-screen__header-copy p,
 .account-screen__header-copy small {
   margin: 0;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 13px;
+}
+
+.account-screen__avatar span {
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.account-grid {
+  margin-bottom: 16px;
 }
 
 .account-screen--strict .account-stat,
@@ -1063,6 +1075,10 @@ svg {
   gap: 10px;
 }
 
+.account-screen--strict .account-panel {
+  margin-bottom: 12px;
+}
+
 .account-stat__icon {
   width: 24px;
   height: 24px;
@@ -1080,34 +1096,21 @@ svg {
   stroke-linejoin: round;
 }
 
-.account-stat--yellow .account-stat__icon {
+.account-stat__icon {
   color: #ffcb3d;
 }
 
-.account-stat--green .account-stat__icon {
-  color: #1bcb5a;
-}
-
-.account-stat--muted .account-stat__icon {
-  color: #94a3b8;
-}
-
-.account-stat--red .account-stat__icon {
-  color: #ef4444;
-}
-
 .account-screen--strict .account-stat strong {
-  order: 2;
   color: var(--white);
-  font-size: 1.12rem;
+  font-size: 18px;
   line-height: 1.25;
+  margin-bottom: 6px;
 }
 
 .account-screen--strict .account-stat span {
-  order: 3;
   color: var(--muted);
-  font-size: 0.76rem;
-  line-height: 1.35;
+  font-size: 12px;
+  line-height: 16px;
 }
 
 .account-panel--usage {
@@ -1154,12 +1157,14 @@ svg {
 
 .account-panel__status-good {
   color: #4ade80;
-  font-size: 1.16rem;
+  font-size: 18px;
+  font-weight: 800;
 }
 
 .account-panel__status-bad {
   color: #ef4444;
-  font-size: 1.16rem;
+  font-size: 18px;
+  font-weight: 800;
 }
 
 .account-gradient-card,
@@ -1176,52 +1181,78 @@ svg {
   display: grid;
   justify-items: start;
   gap: 6px;
-  background: linear-gradient(135deg, #ffe066, #f5c518, #a87410);
-  color: #111827;
+  margin-bottom: 12px;
+  background: linear-gradient(90deg, #dc2626, #16a34a);
+  color: var(--white);
   text-align: left;
 }
 
 .account-gradient-card span {
-  color: rgba(17, 24, 39, 0.78);
-  font-size: 0.82rem;
+  color: var(--muted);
+  font-size: 13px;
   font-weight: 600;
 }
 
-.account-gradient-card strong,
-.account-primary-cta {
-  font-size: 1.02rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
+.account-gradient-card strong {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
 }
 
 .account-primary-cta {
+  margin-top: 20px;
+  margin-bottom: 24px;
   color: #111827;
-  background: linear-gradient(135deg, #ffe066, #f5c518, #a87410);
+  background: linear-gradient(90deg, #ffcb3d, #e5a020);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-align: center;
 }
 
 .account-primary-cta--disabled {
   opacity: 0.55;
 }
 
+.account-offer-section .account-primary-cta {
+  margin: 0;
+  font-size: 16px;
+}
+
 .account-device-section {
   display: grid;
   gap: 12px;
+  margin-bottom: 8px;
 }
 
-.account-device-section h2,
-.account-offer-section h2 {
+.account-device-section h2 {
   margin: 0;
   color: var(--white);
-  font-size: 0.95rem;
+  font-size: 15px;
   font-weight: 700;
 }
 
-.account-device-section p,
+.account-offer-section h2 {
+  margin: 0 0 10px;
+  color: var(--white);
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  line-height: 20px;
+}
+
+.account-device-section p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 18px;
+}
+
 .account-offer-section p {
   margin: 0;
   color: var(--muted);
-  font-size: 0.76rem;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 18px;
 }
 
 .account-device-row {
@@ -1231,6 +1262,7 @@ svg {
   padding: 12px 14px;
   border-radius: 12px;
   background: #1a1d23;
+  margin-bottom: 12px;
 }
 
 .account-device-row code {
@@ -1250,6 +1282,7 @@ svg {
   border-radius: 12px;
   background: #1ec967;
   color: #000;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -1262,23 +1295,26 @@ svg {
 .account-offer-section {
   display: grid;
   gap: 12px;
-  margin-top: 4px;
+  margin-top: 24px;
+  margin-bottom: 16px;
   border-color: rgba(255, 203, 61, 0.12);
 }
 
 .account-offer-section__warning {
   color: #fca5a5;
+  font-size: 13px;
   text-align: center;
   font-weight: 600;
+  margin-bottom: 8px;
 }
 
 .account-offer-section__timer {
   display: block;
   color: var(--yellow);
   text-align: center;
-  font-size: 1.8rem;
+  font-size: 28px;
   font-weight: 800;
-  letter-spacing: 0.12em;
+  letter-spacing: 2px;
 }
 
 .account-offer-section__input {
@@ -1289,9 +1325,10 @@ svg {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: #151922;
   color: var(--white);
-  font-size: 1rem;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 2px;
+  margin-bottom: 14px;
 }
 
 .account-offer-section__input--disabled {
@@ -1300,6 +1337,7 @@ svg {
 
 .account-offer-section__error {
   color: #fca5a5;
+  font-size: 13px;
   text-align: center;
   font-weight: 600;
 }

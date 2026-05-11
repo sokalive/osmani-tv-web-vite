@@ -33,7 +33,6 @@ function formatOfferCooldown(totalSeconds: number) {
 }
 
 type StatCardProps = {
-  tone: 'yellow' | 'green' | 'muted' | 'red'
   icon: 'payment' | 'access' | 'duration' | 'expiry'
   value: string
   label: string
@@ -75,9 +74,9 @@ function StatIcon({ icon }: Pick<StatCardProps, 'icon'>) {
   )
 }
 
-function StatCard({ tone, icon, value, label }: StatCardProps) {
+function StatCard({ icon, value, label }: StatCardProps) {
   return (
-    <article className={`account-stat account-stat--${tone}`}>
+    <article className="account-stat">
       <span className="account-stat__icon" aria-hidden="true">
         <StatIcon icon={icon} />
       </span>
@@ -245,12 +244,11 @@ export function AccountPage() {
 
           <div className="account-screen__header-main">
             <div className="account-screen__avatar">
-              <span>O</span>
+              <span>B</span>
               <i />
             </div>
             <div className="account-screen__header-copy">
-              <h1>{data?.popupSettings?.title || 'Osmani TV'}</h1>
-              <p>{deviceLabel}</p>
+              <h1>{deviceLabel}</h1>
               <small>ID: {deviceShort}</small>
             </div>
           </div>
@@ -283,28 +281,24 @@ export function AccountPage() {
 
         <div className="account-grid">
           <StatCard
-            tone="yellow"
             icon="payment"
             value={paymentValue}
             label="Malipo / Kifurushi"
           />
           <StatCard
-            tone="green"
             icon="access"
             value={accessValue}
             label="Channel Zilizofunguka"
           />
           <StatCard
-            tone="muted"
             icon="duration"
             value={durationValue}
             label="Muda wa Kifurushi"
           />
           <StatCard
-            tone="red"
             icon="expiry"
             value={expiryValue}
-            label="Tarehe ya Kuisha"
+            label="Kuisha Tarehe"
           />
         </div>
 
@@ -392,7 +386,7 @@ export function AccountPage() {
               setOfferError('')
               setOfferCodeInput(event.target.value.toUpperCase())
             }}
-            placeholder="Ingiza code"
+            placeholder="__________"
             disabled={cooldownRemainingSec > 0}
           />
           {offerError ? <p className="account-offer-section__error">{offerError}</p> : null}
