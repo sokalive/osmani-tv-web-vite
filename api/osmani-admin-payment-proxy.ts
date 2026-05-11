@@ -74,7 +74,7 @@ async function handle(request: Request) {
       headers: responseHeaders,
     })
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Payment proxy failed'
+    const message = error instanceof Error ? error.message : 'Origin-safe proxy failed'
     return Response.json(
       {
         error: message,

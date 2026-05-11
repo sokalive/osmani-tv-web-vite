@@ -497,7 +497,7 @@ export async function verifySubscription(
   deviceId: string,
   deviceFingerprint: string,
 ) {
-  const payload = await osmaniAdminClient.post<unknown>('/api/subscription/verify', {
+  const payload = await osmaniAdminPaymentClient.post<unknown>('/api/subscription/verify', {
     device_id: deviceId,
     device_fingerprint: deviceFingerprint,
   })
@@ -506,7 +506,7 @@ export async function verifySubscription(
 }
 
 export async function fetchSubscriptionStatus(deviceId: string) {
-  const payload = await osmaniAdminClient.get<unknown>(
+  const payload = await osmaniAdminPaymentClient.get<unknown>(
     `/api/subscription-status?device_id=${encodeURIComponent(deviceId)}`,
   )
 
