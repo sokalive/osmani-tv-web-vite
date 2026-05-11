@@ -4,6 +4,7 @@ import type {
   SubscriptionStatus,
 } from '../../types/osmani'
 import { osmaniAdminClient } from './osmaniAdminClient'
+import { osmaniAdminPaymentClient } from './osmaniAdminPaymentClient'
 
 type PlainObject = Record<string, unknown>
 
@@ -15,6 +16,20 @@ function pickString(...values: unknown[]) {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) {
       return value.trim()
+    }
+  }
+
+  return null
+}
+
+function pickStringLike(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'string' && value.trim()) {
+      return value.trim()
+    }
+
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return String(value)
     }
   }
 
@@ -76,7 +91,7 @@ function normalizePlanRow(raw: unknown): SubscriptionPlan | null {
     return null
   }
 
-  const id = pickString(raw.id, raw.plan_id, raw.slug, raw.code)
+  const id = pickStringLike(raw.id, raw.plan_id, raw.slug, raw.code)
   const name = pickString(raw.name, raw.title, raw.label)
 
   if (!name) {
@@ -89,7 +104,7 @@ function normalizePlanRow(raw: unknown): SubscriptionPlan | null {
     price:
       pickNumber(raw.price, raw.amount, raw.Price, raw.Amount) ?? 0,
     duration:
-      pickString(
+      pickStringLike(
         raw.duration_days,
         raw.durationDays,
         raw.days,
@@ -296,7 +311,7 @@ function normalizeProviderRow(raw: unknown): PaymentProvider | null {
 
   return {
     id:
-      pickString(raw.id, raw.provider_id, raw.code, raw.slug) ||
+      pickStringLike(raw.id, raw.provider_id, raw.code, raw.slug) ||
       name.toLowerCase().replace(/[^a-z0-9_-]+/gi, '-'),
     name,
     logoUrl: pickProviderLogoUrl(raw),
@@ -691,16 +706,39 @@ export async function createPayment({
   deviceId: string
   deviceFingerprint: string
 }) {
-  const payload = await osmaniAdminClient.post<unknown>(
-    '/api/payments/create-payment',
-    {
-      phone,
-      plan_id: planId,
+  const normalizedPhone = String(phone || '').replace(/\s/g, '')
+  const normalizedPlanId =
+    /^\d+$/.test(String(planId).trim()) ? Number(String(planId).trim()) : planId
+
+  let payload: unknown
+  try {
+    payload = await osmaniAdminPaymentClient.post<unknown>('/api/payments/create-payment', {
+      phone: normalizedPhone,
+      plan_id: normalizedPlanId,
       amount,
       device_id: deviceId,
       device_fingerprint: deviceFingerprint,
-    },
-  )
+    })
+  } catch (error) {
+    const responseBody =
+      error instanceof Error && 'responseBody' in error
+        ? String((error as { responseBody?: string }).responseBody || '')
+        : ''
+
+    if (responseBody) {
+      try {
+        const parsed = JSON.parse(responseBody) as PlainObject
+        const message = pickString(parsed.error, parsed.message)
+        if (message) {
+          throw new Error(message, { cause: error })
+        }
+      } catch {
+        // fall through to generic error below
+      }
+    }
+
+    throw error
+  }
 
   if (!isPlainObject(payload)) {
     throw new Error('Missing order_id from server')
@@ -720,7 +758,7 @@ export async function createPayment({
 }
 
 export async function getPaymentStatus(orderId: string) {
-  const payload = await osmaniAdminClient.get<unknown>(
+  const payload = await osmaniAdminPaymentClient.get<unknown>(
     `/api/payment-status/${encodeURIComponent(orderId)}`,
   )
 

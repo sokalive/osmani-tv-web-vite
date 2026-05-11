@@ -14,6 +14,10 @@ export const env = {
   osmaniAdminApiUrl: trimTrailingSlash(
     import.meta.env.VITE_OSMANI_ADMIN_API_URL?.trim() || '/osmani-admin-proxy',
   ),
+  osmaniAdminPaymentProxyUrl: trimTrailingSlash(
+    import.meta.env.VITE_OSMANI_ADMIN_PAYMENT_PROXY_URL?.trim() ||
+      '/osmani-admin-payment-proxy',
+  ),
   streamProxyBaseUrl: trimTrailingSlash(
     import.meta.env.VITE_STREAM_PROXY_BASE_URL?.trim() ||
       '/osmani-admin-proxy/stream-proxy',
@@ -34,5 +38,6 @@ export const env = {
 export const apiReadiness = {
   tv: Boolean(env.osmaniTvApiUrl),
   admin: Boolean(env.osmaniAdminApiUrl),
+  adminPaymentProxy: Boolean(env.osmaniAdminPaymentProxyUrl),
   stream: Boolean(env.streamProxyBaseUrl),
 }
