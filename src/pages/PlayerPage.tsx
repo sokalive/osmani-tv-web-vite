@@ -8,6 +8,9 @@ export function PlayerPage() {
   const params = useParams()
   const { data, selectedChannel } = useCatalogOutlet()
   const [sourceIndex, setSourceIndex] = useState(0)
+  const [retryToken, setRetryToken] = useState(0)
+  const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain')
+  const [pickerKind, setPickerKind] = useState<'language' | 'quality' | null>(null)
 
   const channel = useMemo(() => {
     const channelId = String(params.channelId ?? '').trim()
@@ -39,7 +42,7 @@ export function PlayerPage() {
     src: playbackSrc,
     autoPlay: true,
     startMuted: true,
-    retryToken: sourceIndex,
+    retryToken: sourceIndex + retryToken,
   })
 
   const statusLabel = {
@@ -51,6 +54,38 @@ export function PlayerPage() {
     'awaiting-user': 'Tap to play',
     error: 'Error',
   }[status]
+
+  const qualityOptions = useMemo(
+    () =>
+      channel?.playbackCandidates.map((candidate, index) => ({
+        id: candidate.id,
+        label: candidate.label,
+        selected: index === sourceIndex,
+        onSelect: () => {
+          setSourceIndex(index)
+          setPickerKind(null)
+        },
+      })) ?? [],
+    [channel?.playbackCandidates, sourceIndex],
+  )
+
+  const languageOptions = useMemo(
+    () => [
+      {
+        id: 'sw',
+        label: 'Default Audio',
+        selected: true,
+        onSelect: () => setPickerKind(null),
+      },
+      {
+        id: 'auto',
+        label: 'Auto Detect',
+        selected: false,
+        onSelect: () => setPickerKind(null),
+      },
+    ],
+    [],
+  )
 
   if (!channel) {
     return (
@@ -74,7 +109,7 @@ export function PlayerPage() {
       <div className="player-screen__surface">
         <video
           ref={videoRef}
-          className="player-screen__video"
+          className={`player-screen__video player-screen__video--${fitMode}`}
           controls
           muted={isMuted}
           playsInline
@@ -102,6 +137,15 @@ export function PlayerPage() {
             <div className="player-screen__center-state">
               <strong>{status === 'error' ? 'Hitilafu ya uchezi' : 'Inabuffer...'}</strong>
               <p>{error || channel.playbackMessage}</p>
+              {status === 'error' ? (
+                <button
+                  type="button"
+                  className="player-screen__retry"
+                  onClick={() => setRetryToken((value) => value + 1)}
+                >
+                  Jaribu tena
+                </button>
+              ) : null}
             </div>
           ) : null}
 
@@ -123,9 +167,25 @@ export function PlayerPage() {
             <button
               type="button"
               className="player-action"
-              onClick={() => setMuted(!isMuted)}
+              onClick={() => setPickerKind('language')}
             >
-              {isMuted ? 'Sound' : 'Mute'}
+              Lugha
+            </button>
+            <button
+              type="button"
+              className="player-action"
+              onClick={() => setPickerKind('quality')}
+            >
+              Quality
+            </button>
+            <button
+              type="button"
+              className="player-action"
+              onClick={() =>
+                setFitMode((value) => (value === 'contain' ? 'cover' : 'contain'))
+              }
+            >
+              Fill
             </button>
             <button
               type="button"
@@ -134,18 +194,53 @@ export function PlayerPage() {
             >
               Full Screen
             </button>
-            {channel.playbackCandidates.length > 1 ? (
+          </div>
+
+          {pickerKind ? (
+            <div className="player-picker" role="dialog" aria-modal="true">
               <button
                 type="button"
-                className="player-action"
-                onClick={() =>
-                  setSourceIndex((value) => (value + 1) % channel.playbackCandidates.length)
-                }
-              >
-                Source
-              </button>
-            ) : null}
-          </div>
+                className="player-picker__backdrop"
+                aria-label="Close picker"
+                onClick={() => setPickerKind(null)}
+              />
+              <div className="player-picker__sheet">
+                <div className="player-picker__header">
+                  <strong>{pickerKind === 'quality' ? 'Quality' : 'Lugha'}</strong>
+                  <button type="button" onClick={() => setPickerKind(null)}>
+                    Close
+                  </button>
+                </div>
+
+                {(pickerKind === 'quality' ? qualityOptions : languageOptions).map((option) => (
+                  <button
+                    type="button"
+                    key={option.id}
+                    className={`player-picker__row${
+                      option.selected ? ' player-picker__row--active' : ''
+                    }`}
+                    onClick={option.onSelect}
+                  >
+                    <span>{option.label}</span>
+                    {option.selected ? <span>Selected</span> : null}
+                  </button>
+                ))}
+
+                {pickerKind === 'language' ? (
+                  <button
+                    type="button"
+                    className="player-picker__mute-toggle"
+                    onClick={() => {
+                      setMuted(!isMuted)
+                      setPickerKind(null)
+                    }}
+                  >
+                    {isMuted ? 'Washa sauti' : 'Mute'}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 

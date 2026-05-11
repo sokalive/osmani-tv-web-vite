@@ -77,6 +77,8 @@ export function CatalogScreen({
             channels={data.channels}
             onSelectChannel={openChannel}
           />
+        ) : showHero && loading ? (
+          <HeroCarousel slides={[]} channels={[]} onSelectChannel={openChannel} />
         ) : null}
 
         {mode === 'home' ? (
@@ -110,7 +112,13 @@ export function CatalogScreen({
       </header>
 
       {loading && channels.length === 0 ? (
-        <div className="catalog-empty">Inapakia chaneli...</div>
+        <div className="catalog-grid catalog-grid--loading">
+          {Array.from({ length: 4 }).map((_, index) => (
+            <div className="catalog-card catalog-card--skeleton" key={index}>
+              <div className="catalog-card__poster" />
+            </div>
+          ))}
+        </div>
       ) : channels.length === 0 ? (
         <div className="catalog-empty">Hakuna chaneli bado.</div>
       ) : (

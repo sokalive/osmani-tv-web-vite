@@ -15,6 +15,7 @@ export function HeroCarousel({
   onSelectChannel,
 }: HeroCarouselProps) {
   const [activeIndex, setActiveIndex] = useState(0)
+  const [nowMs, setNowMs] = useState(() => Date.now())
   const safeIndex = slides.length ? activeIndex % slides.length : 0
 
   useEffect(() => {
@@ -31,6 +32,17 @@ export function HeroCarousel({
     }
   }, [slides.length])
 
+  useEffect(() => {
+    if (!slides.some((slide) => slide.enableCountdown)) {
+      return
+    }
+
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [slides])
+
   const activeSlide = slides[safeIndex] ?? null
   const activeChannel = useMemo(() => {
     if (!activeSlide?.redirectChannelId) {
@@ -42,8 +54,38 @@ export function HeroCarousel({
     )
   }, [activeSlide, channels])
 
+  const countdownLabel = useMemo(() => {
+    if (!activeSlide?.enableCountdown || !activeSlide.eventEnd) {
+      return null
+    }
+
+    const endMs = Date.parse(activeSlide.eventEnd)
+    if (Number.isNaN(endMs) || endMs <= nowMs) {
+      return null
+    }
+
+    const remaining = Math.max(0, Math.floor((endMs - nowMs) / 1000))
+    const hours = Math.floor(remaining / 3600)
+    const minutes = Math.floor((remaining % 3600) / 60)
+    const seconds = remaining % 60
+
+    return `Ends in ${String(hours).padStart(2, '0')}:${String(minutes).padStart(
+      2,
+      '0',
+    )}:${String(seconds).padStart(2, '0')}`
+  }, [activeSlide, nowMs])
+
   if (!activeSlide) {
-    return <div className="hero-carousel hero-carousel--empty" />
+    return (
+      <div className="hero-carousel hero-carousel--empty">
+        <div className="hero-carousel__skeleton" />
+        <div className="hero-carousel__dots hero-carousel__dots--skeleton">
+          <span className="hero-carousel__dot" />
+          <span className="hero-carousel__dot" />
+          <span className="hero-carousel__dot" />
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -64,8 +106,18 @@ export function HeroCarousel({
         )}
 
         <div className="hero-carousel__overlay">
-          {activeSlide.badge ? (
-            <span className="hero-carousel__badge">{activeSlide.badge}</span>
+          {countdownLabel ? (
+            <span className="hero-carousel__countdown">{countdownLabel}</span>
+          ) : null}
+          {activeSlide.badgeEnabled && activeSlide.badge ? (
+            <span
+              className={`hero-carousel__badge${
+                activeSlide.badgeBlink ? ' hero-carousel__badge--blink' : ''
+              }`}
+              style={{ backgroundColor: activeSlide.badgeColor }}
+            >
+              {activeSlide.badge}
+            </span>
           ) : null}
           <h2>{activeSlide.title}</h2>
           {activeSlide.description ? <p>{activeSlide.description}</p> : null}

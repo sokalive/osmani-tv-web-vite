@@ -22,6 +22,8 @@ export function AccountPage() {
     },
   ]
 
+  const bulletPoints = data?.popupSettings?.bulletPoints ?? []
+
   return (
     <div className="screen-page">
       <section className="account-screen">
@@ -34,7 +36,7 @@ export function AccountPage() {
             <p className="catalog-screen__eyebrow">Akaunti Yangu</p>
             <h1>{data?.popupSettings?.title || 'Osmani TV'}</h1>
             <p className="catalog-screen__subtitle">
-              Browser account center with the same dark-card feel as the APK app.
+              Taarifa za kifurushi, msaada, na hali ya mfumo kwa muonekano wa APK.
             </p>
           </div>
         </header>
@@ -50,35 +52,57 @@ export function AccountPage() {
 
         <section className="account-panel account-panel--accent">
           <p className="account-panel__label">Hamisha Kifurushi</p>
-          <h2>Support & subscription flow stay on the same backend</h2>
+          <h2>Fungua msaada wa akaunti na maelekezo ya kifurushi</h2>
           <p>
-            The web project keeps using the connected production APIs only. This
-            screen mirrors the APK account presentation style without modifying
-            backend or mobile logic.
+            Frontend ya web inatumia backend ile ile ya production. Muundo huu
+            unafuata mwonekano wa akaunti wa app bila kugusa logic ya mobile au
+            admin.
           </p>
+          <div className="account-panel__actions">
+            {data?.whatsappSettings?.enabled && data.whatsappSettings.url ? (
+              <a
+                className="account-action"
+                href={data.whatsappSettings.url}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Fungua WhatsApp
+              </a>
+            ) : null}
+            <button type="button" className="account-action account-action--secondary">
+              Tazama Maelezo
+            </button>
+          </div>
         </section>
 
-        {data?.popupSettings?.bulletPoints.length ? (
+        {bulletPoints.length ? (
           <section className="account-panel">
-            <p className="account-panel__label">Maelezo</p>
+            <p className="account-panel__label">Faida za kifurushi</p>
             <ul className="account-list">
-              {data.popupSettings.bulletPoints.map((item) => (
+              {bulletPoints.map((item) => (
                 <li key={item}>{item}</li>
               ))}
             </ul>
           </section>
         ) : null}
 
-        {data?.whatsappSettings?.enabled && data.whatsappSettings.url ? (
-          <a
-            className="account-action"
-            href={data.whatsappSettings.url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Fungua WhatsApp support
-          </a>
-        ) : null}
+        <section className="account-panel">
+          <p className="account-panel__label">Vifaa & mfumo</p>
+          <div className="account-device-list">
+            <article className="account-device">
+              <strong>Browser Player</strong>
+              <span>Chrome / Edge optimized</span>
+            </article>
+            <article className="account-device">
+              <strong>Playback</strong>
+              <span>HLS + fullscreen stable</span>
+            </article>
+            <article className="account-device">
+              <strong>Catalog</strong>
+              <span>{data?.channels.length ?? 0} live channels ready</span>
+            </article>
+          </div>
+        </section>
       </section>
     </div>
   )

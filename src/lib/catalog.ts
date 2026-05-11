@@ -231,6 +231,20 @@ export function normalizeBanners(raw: unknown) {
         imageUrl: asString(record.imageUrl ?? record.image_url) || null,
         isActive: asBoolean(record.isActive, asBoolean(record.is_active, true)),
         badge: asString(record.badge),
+        badgeEnabled: asBoolean(
+          record.badgeEnabled,
+          asBoolean(record.badge_enabled, true),
+        ),
+        badgeBlink: asBoolean(record.badgeBlink, asBoolean(record.badge_blink)),
+        badgeColor:
+          asString(record.badgeColor ?? record.badge_color) || '#DC2626',
+        enableCountdown: asBoolean(
+          record.enableCountdown,
+          asBoolean(record.enable_countdown),
+        ),
+        eventStart:
+          asString(record.eventStart ?? record.event_start) || null,
+        eventEnd: asString(record.eventEnd ?? record.event_end) || null,
         redirectChannelId: asString(
           record.redirectChannelId ?? record.redirect_channel_id,
         ) || null,

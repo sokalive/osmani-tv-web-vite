@@ -8,7 +8,7 @@ const navItems = [
   { to: '/', label: 'Home', icon: 'home' },
   { to: '/sports', label: 'Sports', icon: 'sports' },
   { to: '/movies', label: 'Tamthilia', icon: 'movies' },
-  { to: '/account', label: 'Akaunti', icon: 'account' },
+  { to: '/account', label: 'Akaunti Yangu', icon: 'account' },
 ] as const
 
 type NavIconName = (typeof navItems)[number]['icon']

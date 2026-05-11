@@ -11,6 +11,12 @@ export type BannerRecord = {
   imageUrl: string | null
   isActive: boolean
   badge: string
+  badgeEnabled: boolean
+  badgeBlink: boolean
+  badgeColor: string
+  enableCountdown: boolean
+  eventStart: string | null
+  eventEnd: string | null
   redirectChannelId: string | null
   sortOrder: number
 }
