@@ -34,6 +34,37 @@ export type WhatsappSettings = {
   url: string
 }
 
+export type SubscriptionPlan = {
+  id: string
+  name: string
+  price: number
+  duration: string
+  isActive: boolean
+}
+
+export type PaymentProvider = {
+  id: string
+  name: string
+  logoUrl: string | null
+  active: boolean
+}
+
+export type SubscriptionStatus = {
+  active: boolean
+  expiresAt: string | null
+  startedAt: string | null
+  serverTime: string | null
+  serverTimeFetchedAt: number | null
+  amount: number | null
+  currency: string | null
+  planName: string | null
+  planDurationDays: number | null
+  plans: SubscriptionPlan[]
+  deviceId: string | null
+  manualGiftAckKey: string | null
+  raw: unknown
+}
+
 export type LegacyApiStatus = {
   message: string
   online: boolean

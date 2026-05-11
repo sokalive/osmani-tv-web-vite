@@ -3,6 +3,7 @@ import { env } from '../config/env'
 import { useCatalogBootstrap } from '../hooks/useCatalogBootstrap'
 import { BottomNav } from '../components/layout/BottomNav'
 import { WhatsAppFab } from '../components/layout/WhatsAppFab'
+import { PopupSettingsModal } from '../components/modals/PopupSettingsModal'
 import type { CatalogOutletContext } from './catalogOutlet'
 
 export function AppShell() {
@@ -24,6 +25,16 @@ export function AppShell() {
       <main className={`page-content${isPlayerRoute ? ' page-content--player' : ''}`}>
         <Outlet context={outletContext} />
       </main>
+      {!isPlayerRoute ? (
+        <PopupSettingsModal
+          key={[
+            catalog.data?.popupSettings?.mode,
+            catalog.data?.popupSettings?.title,
+            catalog.data?.popupSettings?.disclaimer,
+          ].join('|')}
+          settings={catalog.data?.popupSettings || null}
+        />
+      ) : null}
       {!isPlayerRoute ? (
         <>
           <WhatsAppFab url={catalog.data?.whatsappSettings?.url || ''} />

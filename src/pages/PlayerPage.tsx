@@ -1,7 +1,49 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useCatalogOutlet } from '../app/catalogOutlet'
 import { useHlsPlayback } from '../hooks/useHlsPlayback'
+
+function PlayerActionIcon({ kind }: { kind: 'play' | 'language' | 'quality' | 'fill' | 'fullscreen' }) {
+  if (kind === 'language') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M5 7h10M5 12h7M5 17h10" />
+        <path d="M17 8l3 3-3 3" />
+      </svg>
+    )
+  }
+
+  if (kind === 'quality') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="4" y="6" width="16" height="12" rx="3" />
+        <path d="M9 15 11.5 11.5 14 13.8 16 10.8" />
+      </svg>
+    )
+  }
+
+  if (kind === 'fill') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 5H5v3M16 5h3v3M8 19H5v-3M16 19h3v-3" />
+      </svg>
+    )
+  }
+
+  if (kind === 'fullscreen') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4" />
+      </svg>
+    )
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 6.5v11l9-5.5-9-5.5Z" />
+    </svg>
+  )
+}
 
 export function PlayerPage() {
   const navigate = useNavigate()
@@ -11,6 +53,7 @@ export function PlayerPage() {
   const [retryToken, setRetryToken] = useState(0)
   const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain')
   const [pickerKind, setPickerKind] = useState<'language' | 'quality' | null>(null)
+  const [controlsPinned, setControlsPinned] = useState(true)
 
   const channel = useMemo(() => {
     const channelId = String(params.channelId ?? '').trim()
@@ -45,16 +88,6 @@ export function PlayerPage() {
     retryToken: sourceIndex + retryToken,
   })
 
-  const statusLabel = {
-    idle: 'Idle',
-    loading: 'Loading',
-    ready: 'Ready',
-    playing: 'LIVE',
-    buffering: 'Buffering',
-    'awaiting-user': 'Tap to play',
-    error: 'Error',
-  }[status]
-
   const qualityOptions = useMemo(
     () =>
       channel?.playbackCandidates.map((candidate, index) => ({
@@ -87,6 +120,32 @@ export function PlayerPage() {
     [],
   )
 
+  const controlsVisible = controlsPinned || Boolean(pickerKind) || status !== 'playing'
+  const showCenterState = status !== 'playing'
+  const centerTitle =
+    status === 'error'
+      ? 'Hitilafu ya uchezi'
+      : status === 'awaiting-user'
+        ? 'Gusa ili uanze'
+        : 'Inapakia moja kwa moja...'
+  const centerMessage =
+    status === 'error'
+      ? error || channel?.playbackMessage
+      : status === 'buffering'
+        ? 'Inabuffer stream ya moja kwa moja...'
+        : channel?.playbackMessage
+
+  useEffect(() => {
+    if (pickerKind || status !== 'playing') {
+      return
+    }
+
+    const timer = window.setTimeout(() => setControlsPinned(false), 3500)
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [pickerKind, status])
+
   if (!channel) {
     return (
       <div className="player-screen player-screen--empty">
@@ -106,23 +165,36 @@ export function PlayerPage() {
 
   return (
     <section className="player-screen">
-      <div className="player-screen__surface">
+      <div
+        className="player-screen__surface"
+        onClick={() => {
+          if (!pickerKind) {
+            setControlsPinned((current) => (controlsVisible ? !current : true))
+          }
+        }}
+      >
         <video
           ref={videoRef}
           className={`player-screen__video player-screen__video--${fitMode}`}
-          controls
           muted={isMuted}
           playsInline
         />
 
-        <div className="player-screen__overlay">
-          <div className="player-screen__topbar">
+        <div
+          className={`player-screen__overlay${
+            controlsVisible || pickerKind ? ' player-screen__overlay--visible' : ''
+          }`}
+        >
+          <div className="player-screen__topbar" onClick={(event) => event.stopPropagation()}>
             <button
               type="button"
               className="player-screen__back"
               onClick={() => navigate(-1)}
+              aria-label="Back"
             >
-              Back
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14.5 6 8.5 12l6 6" />
+              </svg>
             </button>
 
             <div className="player-screen__title-wrap">
@@ -130,13 +202,16 @@ export function PlayerPage() {
               <span>Live Stream</span>
             </div>
 
-            <span className="player-screen__live-pill">{statusLabel}</span>
+            <span className="player-screen__live-pill">LIVE</span>
           </div>
 
-          {status === 'buffering' || status === 'error' ? (
-            <div className="player-screen__center-state">
-              <strong>{status === 'error' ? 'Hitilafu ya uchezi' : 'Inabuffer...'}</strong>
-              <p>{error || channel.playbackMessage}</p>
+          {showCenterState ? (
+            <div
+              className="player-screen__center-state"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <strong>{centerTitle}</strong>
+              <p>{centerMessage}</p>
               {status === 'error' ? (
                 <button
                   type="button"
@@ -149,7 +224,10 @@ export function PlayerPage() {
             </div>
           ) : null}
 
-          <div className="player-screen__bottom-actions">
+          <div
+            className="player-screen__bottom-actions"
+            onClick={(event) => event.stopPropagation()}
+          >
             <button
               type="button"
               className="player-action"
@@ -162,6 +240,9 @@ export function PlayerPage() {
                 videoRef.current?.pause()
               }}
             >
+              <span className="player-action__icon">
+                <PlayerActionIcon kind="play" />
+              </span>
               {status === 'playing' ? 'Pause' : 'Play'}
             </button>
             <button
@@ -169,6 +250,9 @@ export function PlayerPage() {
               className="player-action"
               onClick={() => setPickerKind('language')}
             >
+              <span className="player-action__icon">
+                <PlayerActionIcon kind="language" />
+              </span>
               Lugha
             </button>
             <button
@@ -176,6 +260,9 @@ export function PlayerPage() {
               className="player-action"
               onClick={() => setPickerKind('quality')}
             >
+              <span className="player-action__icon">
+                <PlayerActionIcon kind="quality" />
+              </span>
               Quality
             </button>
             <button
@@ -185,6 +272,9 @@ export function PlayerPage() {
                 setFitMode((value) => (value === 'contain' ? 'cover' : 'contain'))
               }
             >
+              <span className="player-action__icon">
+                <PlayerActionIcon kind="fill" />
+              </span>
               Fill
             </button>
             <button
@@ -192,6 +282,9 @@ export function PlayerPage() {
               className="player-action"
               onClick={() => void requestFullscreen()}
             >
+              <span className="player-action__icon">
+                <PlayerActionIcon kind="fullscreen" />
+              </span>
               Full Screen
             </button>
           </div>
@@ -204,9 +297,16 @@ export function PlayerPage() {
                 aria-label="Close picker"
                 onClick={() => setPickerKind(null)}
               />
-              <div className="player-picker__sheet">
+              <div
+                className="player-picker__sheet"
+                onClick={(event) => event.stopPropagation()}
+              >
                 <div className="player-picker__header">
-                  <strong>{pickerKind === 'quality' ? 'Quality' : 'Lugha'}</strong>
+                  <strong>
+                    {pickerKind === 'quality'
+                      ? 'Chagua Ubora'
+                      : 'Chagua Lugha / Audio'}
+                  </strong>
                   <button type="button" onClick={() => setPickerKind(null)}>
                     Close
                   </button>
@@ -242,24 +342,6 @@ export function PlayerPage() {
             </div>
           ) : null}
         </div>
-      </div>
-
-      <div className="player-screen__details">
-        <div className="player-screen__badge-row">
-          {channel.isHD ? <span className="badge badge--hd">HD</span> : null}
-          <span className={`badge ${channel.isLive ? 'badge--live' : 'badge--offline'}`}>
-            LIVE
-          </span>
-          <span
-            className={`badge ${
-              channel.accessType === 'premium' ? 'badge--premium' : 'badge--free'
-            }`}
-          >
-            {channel.accessType === 'premium' ? 'KULIPIA' : 'BURE'}
-          </span>
-        </div>
-        <h1>{channel.name}</h1>
-        <p>{error || channel.playbackMessage}</p>
       </div>
     </section>
   )
