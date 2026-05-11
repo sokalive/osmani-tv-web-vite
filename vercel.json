@@ -2,7 +2,7 @@
   "rewrites": [
     {
       "source": "/osmani-admin-payment-proxy/:path*",
-      "destination": "/api/osmani-admin-payment-proxy/:path*"
+      "destination": "/api/osmani-admin-payment-proxy?path=:path*"
     },
     {
       "source": "/osmani-admin-proxy/:path*",
