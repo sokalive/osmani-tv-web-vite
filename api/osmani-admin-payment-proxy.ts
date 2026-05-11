@@ -61,10 +61,17 @@ async function handle(request: Request) {
       redirect: 'manual',
     })
 
-    return new Response(upstream.body, {
+    const responseHeaders = new Headers(upstream.headers)
+    responseHeaders.delete('content-encoding')
+    responseHeaders.delete('content-length')
+    responseHeaders.delete('transfer-encoding')
+
+    const responseBody = await upstream.arrayBuffer()
+
+    return new Response(responseBody, {
       status: upstream.status,
       statusText: upstream.statusText,
-      headers: upstream.headers,
+      headers: responseHeaders,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Payment proxy failed'
