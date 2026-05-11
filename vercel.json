@@ -7,6 +7,10 @@
     {
       "source": "/osmani-tv-proxy/:path*",
       "destination": "https://osmani-tv.onrender.com/:path*"
+    },
+    {
+      "source": "/:path*",
+      "destination": "/"
     }
   ]
 }
