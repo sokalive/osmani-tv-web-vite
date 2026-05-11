@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/osmani-admin-proxy/:path*",
+      "destination": "https://osmani-admin-api.onrender.com/:path*"
+    },
+    {
+      "source": "/osmani-tv-proxy/:path*",
+      "destination": "https://osmani-tv.onrender.com/:path*"
+    }
+  ]
+}

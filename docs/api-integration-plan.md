@@ -41,17 +41,32 @@ Use this service only where the current platform already depends on it:
   expects.
 - Keep auth attachment inside the API layer rather than in React components.
 
-## Immediate Next Mapping Tasks
+## Current Production Mapping
 
-- identify the existing playback bootstrap endpoint
-- identify the current manifest or stream URL response shape
-- identify any admin-managed branding/config payloads needed by the navbar or
-  home page
-- wire those concrete calls into the two service clients
+- `osmani-admin-api.onrender.com/api/channels` is the live channel catalog used
+  by the mobile app and now by this web frontend
+- categories are derived from the live channel `category` field
+- `osmani-admin-api.onrender.com/api/settings` exposes app mode flags
+- `osmani-admin-api.onrender.com/api/banners`,
+  `osmani-admin-api.onrender.com/api/popup-settings`, and
+  `osmani-admin-api.onrender.com/api/whatsapp-settings` provide supporting UI
+  data already used in the platform
+- `osmani-admin-api.onrender.com/stream-proxy` is the preferred browser HLS
+  bootstrap endpoint for manifest rewriting and upstream header forwarding
+- `osmani-tv.onrender.com/api` remains a separately configurable legacy runtime
+  health endpoint, while its `/api/channels` is intentionally not the primary
+  catalog source
 
 ## Environment Variables
 
 - `VITE_OSMANI_TV_API_URL`
 - `VITE_OSMANI_ADMIN_API_URL`
-- `VITE_DEFAULT_STREAM_URL`
+- `VITE_STREAM_PROXY_BASE_URL`
 - `VITE_BRAND_NAME`
+
+## Deployment Note
+
+The production Render APIs currently behave differently when a browser `Origin`
+header is present. This web repo therefore uses same-origin proxy paths plus
+deployment rewrites so the frontend can stay static while the live APIs remain
+unchanged.

@@ -72,6 +72,20 @@ export function useHlsPlayback({
     video.webkitEnterFullscreen?.()
   }, [])
 
+  const play = useCallback(async () => {
+    const video = videoRef.current
+
+    if (!video) {
+      return
+    }
+
+    try {
+      await video.play()
+    } catch {
+      setInternalStatus('awaiting-user')
+    }
+  }, [])
+
   const updateMutedState = useCallback((nextMuted: boolean) => {
     setIsMuted(nextMuted)
 
@@ -233,6 +247,7 @@ export function useHlsPlayback({
     error: src ? internalError : null,
     isMuted,
     setMuted: updateMutedState,
+    play,
     requestFullscreen,
   }
 }

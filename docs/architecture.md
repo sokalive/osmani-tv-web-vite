@@ -41,6 +41,15 @@ contracts.
 - Environment variables provide the base URLs so deployment targets can change
   without code changes.
 
+### 4. Bootstrap Layer
+
+- `src/hooks/useCatalogBootstrap.ts` loads the production catalog and supporting
+  settings in one place.
+- `src/lib/catalog.ts` normalizes live API responses into browser-friendly view
+  models, derives categories, and constructs proxied playback candidates.
+- Session handling remains isolated in `src/services/auth/session.ts` so auth
+  can be attached later if the backend requires it.
+
 ## Data Flow
 
 1. Page shell requests stream metadata from the existing backend APIs.

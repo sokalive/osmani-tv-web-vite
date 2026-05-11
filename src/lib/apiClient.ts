@@ -1,3 +1,6 @@
+import { env } from '../config/env'
+import { getSessionToken } from '../services/auth/session'
+
 export class ApiError extends Error {
   public readonly status: number
   public readonly responseBody: string
@@ -27,11 +30,28 @@ type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue }
 
+function resolveBaseUrl(rawBaseUrl: string) {
+  if (/^https?:\/\//i.test(rawBaseUrl)) {
+    return rawBaseUrl
+  }
+
+  if (typeof window !== 'undefined') {
+    return new URL(rawBaseUrl, window.location.origin).toString()
+  }
+
+  return `http://localhost${rawBaseUrl.startsWith('/') ? rawBaseUrl : `/${rawBaseUrl}`}`
+}
+
 const withJsonHeaders = (init: RequestInit = {}) => {
   const headers = new Headers(init.headers)
+  const token = getSessionToken()
 
   if (!headers.has('Accept')) {
     headers.set('Accept', 'application/json')
+  }
+
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`)
   }
 
   if (init.body && !headers.has('Content-Type')) {
@@ -40,6 +60,7 @@ const withJsonHeaders = (init: RequestInit = {}) => {
 
   return {
     ...init,
+    credentials: init.credentials ?? (env.useCredentials ? 'include' : 'same-origin'),
     headers,
   }
 }
@@ -75,7 +96,10 @@ export function createApiClient({ baseUrl, serviceName }: ApiClientOptions) {
       throw new Error(`${serviceName} base URL is not configured.`)
     }
 
-    const url = new URL(path.replace(/^\//, ''), `${baseUrl}/`)
+    const url = new URL(
+      path.replace(/^\//, ''),
+      `${resolveBaseUrl(baseUrl).replace(/\/+$/, '')}/`,
+    )
     const response = await fetch(url, withJsonHeaders(init))
     return parseResponse<T>(response)
   }
@@ -86,6 +110,12 @@ export function createApiClient({ baseUrl, serviceName }: ApiClientOptions) {
       request<T>(path, {
         ...init,
         method: 'POST',
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }),
+    put: <T>(path: string, body?: JsonValue, init?: RequestInit) =>
+      request<T>(path, {
+        ...init,
+        method: 'PUT',
         body: body === undefined ? undefined : JSON.stringify(body),
       }),
   }

@@ -24,8 +24,21 @@ cp .env.example .env
 npm run dev
 ```
 
-Set `VITE_DEFAULT_STREAM_URL` to a valid `.m3u8` stream and provide the two API
-base URLs before testing live integration.
+The repository now ships with production-oriented defaults:
+
+- `VITE_OSMANI_ADMIN_API_URL=/osmani-admin-proxy`
+- `VITE_OSMANI_TV_API_URL=/osmani-tv-proxy`
+- `VITE_STREAM_PROXY_BASE_URL=/osmani-admin-proxy/stream-proxy`
+
+The browser player fetches the live channel catalog from `osmani-admin-api`,
+derives categories from the real response, and sends playback through the
+configured stream proxy for browser-safe HLS delivery.
+
+To avoid browser-origin failures against the Render backends, the repo also
+includes:
+
+- Vite dev proxies in `vite.config.ts`
+- Vercel rewrites in `vercel.json`
 
 ## Project Structure
 
@@ -50,7 +63,7 @@ src/
 The initial scaffold includes:
 
 - an isolated dark-themed web shell
-- a browser-focused HLS playback layer
-- autoplay and fullscreen handling
+- production channel/category/settings integration
+- proxied HLS playback with autoplay and fullscreen handling
 - dedicated API clients for `osmani-tv` and `osmani-admin-api`
 - environment-driven configuration for safe rollout
