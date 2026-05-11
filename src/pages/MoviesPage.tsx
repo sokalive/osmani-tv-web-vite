@@ -1,12 +1,12 @@
 import { CatalogScreen } from '../components/catalog/CatalogScreen'
 
-export function HomePage() {
+export function MoviesPage() {
   return (
     <div className="screen-page">
       <CatalogScreen
-        title="Osmani TV"
-        subtitle="Tazama Live Kila Mahali"
-        showHero
+        title="Tamthilia"
+        subtitle="Movies, tamthilia na vituo vya burudani"
+        mode="movies"
       />
     </div>
   )

@@ -1,44 +1,35 @@
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import { env } from '../config/env'
-
-const navItems = [
-  { href: '#player', label: 'Live' },
-  { href: '#api', label: 'API' },
-  { href: '#architecture', label: 'Architecture' },
-]
+import { useCatalogBootstrap } from '../hooks/useCatalogBootstrap'
+import { BottomNav } from '../components/layout/BottomNav'
+import { WhatsAppFab } from '../components/layout/WhatsAppFab'
+import type { CatalogOutletContext } from './catalogOutlet'
 
 export function AppShell() {
+  const location = useLocation()
+  const catalog = useCatalogBootstrap()
+  const isPlayerRoute = location.pathname.startsWith('/player/')
+  const outletContext: CatalogOutletContext = {
+    data: catalog.data,
+    selectedChannel: catalog.selectedChannel,
+    loading: catalog.loading,
+    error: catalog.error,
+    reload: catalog.reload,
+    selectChannel: catalog.selectChannel,
+  }
+
   return (
-    <div className="app-shell">
-      <header className="site-header">
-        <div className="site-header__inner">
-          <a className="brand" href="/">
-            <span className="brand__mark" aria-hidden="true">
-              OT
-            </span>
-            <span>
-              <strong>{env.brandName}</strong>
-              <small>Browser playback frontend</small>
-            </span>
-          </a>
-
-          <nav className="site-nav" aria-label="Primary">
-            {navItems.map((item) => (
-              <a key={item.href} href={item.href}>
-                {item.label}
-              </a>
-            ))}
-          </nav>
-
-          <a className="site-header__cta" href="#player">
-            Open player
-          </a>
-        </div>
-      </header>
-
-      <main className="page-content">
-        <Outlet />
+    <div className={`app-shell${isPlayerRoute ? ' app-shell--player' : ''}`}>
+      <div className="app-shell__ambient" aria-hidden="true" />
+      <main className={`page-content${isPlayerRoute ? ' page-content--player' : ''}`}>
+        <Outlet context={outletContext} />
       </main>
+      {!isPlayerRoute ? (
+        <>
+          <WhatsAppFab url={catalog.data?.whatsappSettings?.url || ''} />
+          <BottomNav brandName={env.brandName} />
+        </>
+      ) : null}
     </div>
   )
 }
