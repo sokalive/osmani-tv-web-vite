@@ -112,12 +112,15 @@ function normalizePlanRow(raw: unknown): SubscriptionPlan | null {
 function pickPlans(body: PlainObject) {
   const data = isPlainObject(body.data) ? body.data : null
   const subscription = isPlainObject(body.subscription) ? body.subscription : null
+  const dataSubscription = pickDataSubscription(body)
 
   const rawLists = [
     body.plans,
     body.available_plans,
+    body.availablePlans,
     data?.plans,
     subscription?.plans,
+    dataSubscription?.plans,
   ]
 
   for (const rawList of rawLists) {
@@ -129,6 +132,142 @@ function pickPlans(body: PlainObject) {
   }
 
   return [] as SubscriptionPlan[]
+}
+
+function pickDataSubscription(body: PlainObject) {
+  const data = isPlainObject(body.data) ? body.data : null
+  return isPlainObject(data?.subscription) ? data.subscription : null
+}
+
+function pickStartedAt(body: PlainObject) {
+  const data = isPlainObject(body.data) ? body.data : null
+  const subscription = isPlainObject(body.subscription) ? body.subscription : null
+  const dataSubscription = pickDataSubscription(body)
+  const payment = isPlainObject(body.payment) ? body.payment : null
+
+  return pickString(
+    body.started_at,
+    body.startedAt,
+    body.start_at,
+    body.startAt,
+    body.activated_at,
+    body.activatedAt,
+    body.paid_at,
+    body.paidAt,
+    body.payment_date,
+    body.paymentDate,
+    body.created_at,
+    body.createdAt,
+    data?.started_at,
+    data?.startedAt,
+    data?.paid_at,
+    data?.paidAt,
+    data?.created_at,
+    data?.createdAt,
+    subscription?.started_at,
+    subscription?.startedAt,
+    subscription?.activated_at,
+    subscription?.activatedAt,
+    subscription?.created_at,
+    subscription?.createdAt,
+    dataSubscription?.started_at,
+    dataSubscription?.startedAt,
+    dataSubscription?.activated_at,
+    dataSubscription?.activatedAt,
+    dataSubscription?.created_at,
+    dataSubscription?.createdAt,
+    payment?.paid_at,
+    payment?.paidAt,
+    payment?.created_at,
+    payment?.createdAt,
+  )
+}
+
+function pickServerTime(body: PlainObject) {
+  const data = isPlainObject(body.data) ? body.data : null
+  return pickString(
+    body.server_time,
+    body.serverTime,
+    body.now,
+    body.timestamp,
+    data?.server_time,
+    data?.serverTime,
+    data?.now,
+  )
+}
+
+function pickPlan(body: PlainObject) {
+  const data = isPlainObject(body.data) ? body.data : null
+  const subscription = isPlainObject(body.subscription) ? body.subscription : null
+  const dataSubscription = pickDataSubscription(body)
+
+  if (isPlainObject(body.plan)) {
+    return body.plan
+  }
+  if (isPlainObject(subscription?.plan)) {
+    return subscription.plan
+  }
+  if (isPlainObject(data?.plan)) {
+    return data.plan
+  }
+  if (isPlainObject(dataSubscription?.plan)) {
+    return dataSubscription.plan
+  }
+
+  return null
+}
+
+function pickAmount(body: PlainObject) {
+  const data = isPlainObject(body.data) ? body.data : null
+  const subscription = isPlainObject(body.subscription) ? body.subscription : null
+  const dataSubscription = pickDataSubscription(body)
+  const dataSubscriptionPlan = isPlainObject(dataSubscription?.plan)
+    ? dataSubscription.plan
+    : null
+  const plan = pickPlan(body)
+  const subscriptionPlan = isPlainObject(subscription?.plan) ? subscription.plan : null
+  const payment = isPlainObject(body.payment) ? body.payment : null
+
+  return pickNumber(
+    body.amount,
+    body.price,
+    data?.amount,
+    data?.price,
+    subscription?.amount,
+    subscription?.price,
+    dataSubscription?.amount,
+    dataSubscription?.price,
+    dataSubscriptionPlan?.price,
+    dataSubscriptionPlan?.amount,
+    plan?.price,
+    plan?.amount,
+    subscriptionPlan?.price,
+    subscriptionPlan?.amount,
+    payment?.amount,
+    payment?.price,
+  )
+}
+
+function pickCurrency(body: PlainObject) {
+  const data = isPlainObject(body.data) ? body.data : null
+  const subscription = isPlainObject(body.subscription) ? body.subscription : null
+  const dataSubscription = pickDataSubscription(body)
+  const dataSubscriptionPlan = isPlainObject(dataSubscription?.plan)
+    ? dataSubscription.plan
+    : null
+  const plan = pickPlan(body)
+
+  return pickString(
+    body.currency,
+    body.currency_code,
+    body.currencyCode,
+    data?.currency,
+    subscription?.currency,
+    dataSubscription?.currency,
+    dataSubscriptionPlan?.currency,
+    plan?.currency,
+    plan?.currency_code,
+  )
 }
 
 function pickProviderLogoUrl(raw: PlainObject) {
@@ -190,15 +329,10 @@ function normalizeVerifyResponse(payload: unknown): SubscriptionStatus {
 
   const data = isPlainObject(payload.data) ? payload.data : null
   const subscription = isPlainObject(payload.subscription) ? payload.subscription : null
-  const nested = subscription || data || payload
+  const dataSubscription = pickDataSubscription(payload)
+  const nested = subscription || dataSubscription || data || payload
   const payment = isPlainObject(payload.payment) ? payload.payment : null
-  const plan = isPlainObject(payload.plan)
-    ? payload.plan
-    : isPlainObject(subscription?.plan)
-      ? subscription.plan
-      : isPlainObject(data?.plan)
-        ? data.plan
-        : null
+  const plan = pickPlan(payload)
 
   return {
     active: pickActive(payload),
@@ -212,45 +346,19 @@ function normalizeVerifyResponse(payload: unknown): SubscriptionStatus {
       nested.expires_at,
       nested.expiresAt,
     ),
-    startedAt: pickString(
-      payload.started_at,
-      payload.startedAt,
-      data?.started_at,
-      data?.startedAt,
-      subscription?.started_at,
-      subscription?.startedAt,
-      nested.started_at,
-      nested.startedAt,
-    ),
-    serverTime: pickString(
-      payload.server_time,
-      payload.serverTime,
-      data?.server_time,
-      data?.serverTime,
-    ),
+    startedAt: pickStartedAt(payload),
+    serverTime: pickServerTime(payload),
     serverTimeFetchedAt: Date.now(),
-    amount: pickNumber(
-      payload.amount,
-      payload.price,
-      payment?.amount,
-      payment?.price,
-      plan?.price,
-      plan?.amount,
-    ),
-    currency:
-      pickString(
-        payload.currency,
-        payment?.currency,
-        payment?.currency_code,
-        plan?.currency,
-        plan?.currency_code,
-      ) || 'TZS',
+    amount: pickAmount(payload),
+    currency: pickCurrency(payload) || pickString(payment?.currency, payment?.currency_code) || 'TZS',
     planName:
       pickString(
         plan?.name,
         plan?.title,
         subscription?.plan_name,
         subscription?.planName,
+        dataSubscription?.plan_name,
+        dataSubscription?.planName,
         payload.plan_name,
         payload.planName,
       ) || null,
@@ -262,6 +370,8 @@ function normalizeVerifyResponse(payload: unknown): SubscriptionStatus {
       plan?.planDurationDays,
       subscription?.plan_duration_days,
       subscription?.planDurationDays,
+      dataSubscription?.plan_duration_days,
+      dataSubscription?.planDurationDays,
       payload.plan_duration_days,
       payload.planDurationDays,
       data?.plan_duration_days,
@@ -270,7 +380,7 @@ function normalizeVerifyResponse(payload: unknown): SubscriptionStatus {
       data?.durationDays,
     ),
     plans: pickPlans(payload),
-    deviceId: pickString(payload.device_id, payload.deviceId),
+    deviceId: pickString(payload.device_id, payload.deviceId, data?.device_id, data?.deviceId),
     manualGiftAckKey:
       pickString(
         payload.manualGiftAckKey,

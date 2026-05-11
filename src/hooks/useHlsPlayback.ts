@@ -10,6 +10,18 @@ export type PlaybackStatus =
   | 'awaiting-user'
   | 'error'
 
+export type PlaybackQualityOption = {
+  id: number
+  label: string
+  selected: boolean
+}
+
+export type PlaybackAudioTrackOption = {
+  id: number
+  label: string
+  selected: boolean
+}
+
 type UseHlsPlaybackOptions = {
   src: string
   autoPlay?: boolean
@@ -24,6 +36,51 @@ type FullscreenVideoElement = HTMLVideoElement & {
 
 const LIVE_HLS_MIME = 'application/vnd.apple.mpegurl'
 
+function formatQualityLabel(level: {
+  height?: number
+  width?: number
+  bitrate?: number
+  name?: string
+}, index: number) {
+  if (typeof level.name === 'string' && level.name.trim()) {
+    return level.name.trim()
+  }
+
+  if (typeof level.height === 'number' && level.height > 0) {
+    return `${level.height}p`
+  }
+
+  if (typeof level.width === 'number' && level.width > 0) {
+    return `${level.width}w`
+  }
+
+  if (typeof level.bitrate === 'number' && level.bitrate > 0) {
+    return `${Math.round(level.bitrate / 1000)} kbps`
+  }
+
+  return `Level ${index + 1}`
+}
+
+function formatAudioTrackLabel(track: {
+  name?: string
+  lang?: string
+  label?: string
+}, index: number) {
+  if (typeof track.name === 'string' && track.name.trim()) {
+    return track.name.trim()
+  }
+
+  if (typeof track.label === 'string' && track.label.trim()) {
+    return track.label.trim()
+  }
+
+  if (typeof track.lang === 'string' && track.lang.trim()) {
+    return track.lang.trim().toUpperCase()
+  }
+
+  return `Audio ${index + 1}`
+}
+
 export function useHlsPlayback({
   src,
   autoPlay = true,
@@ -35,6 +92,8 @@ export function useHlsPlayback({
   const [internalStatus, setInternalStatus] = useState<PlaybackStatus>('idle')
   const [internalError, setInternalError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(startMuted)
+  const [qualityOptions, setQualityOptions] = useState<PlaybackQualityOption[]>([])
+  const [audioTrackOptions, setAudioTrackOptions] = useState<PlaybackAudioTrackOption[]>([])
 
   const destroyPlayer = useCallback(() => {
     hlsRef.current?.destroy()
@@ -45,6 +104,64 @@ export function useHlsPlayback({
       videoRef.current.removeAttribute('src')
       videoRef.current.load()
     }
+  }, [])
+
+  const syncHlsMetadata = useCallback(() => {
+    const hls = hlsRef.current as
+      | (Hls & {
+          autoLevelEnabled?: boolean
+          currentLevel?: number
+          nextLevel?: number
+          levels?: Array<{
+            height?: number
+            width?: number
+            bitrate?: number
+            name?: string
+          }>
+          audioTrack?: number
+          audioTracks?: Array<{
+            id?: number
+            name?: string
+            lang?: string
+            label?: string
+          }>
+        })
+      | null
+
+    if (!hls) {
+      setQualityOptions([])
+      setAudioTrackOptions([])
+      return
+    }
+
+    const levels = Array.isArray(hls.levels) ? hls.levels : []
+    const autoLevelEnabled = hls.autoLevelEnabled !== false
+    const currentLevel =
+      typeof hls.currentLevel === 'number' ? hls.currentLevel : -1
+    setQualityOptions([
+      {
+        id: -1,
+        label: 'Auto',
+        selected: autoLevelEnabled || currentLevel < 0,
+      },
+      ...levels.map((level, index) => ({
+        id: index,
+        label: formatQualityLabel(level, index),
+        selected: !autoLevelEnabled && currentLevel === index,
+      })),
+    ])
+
+    const audioTracks = Array.isArray(hls.audioTracks) ? hls.audioTracks : []
+    const currentAudioTrack =
+      typeof hls.audioTrack === 'number' ? hls.audioTrack : -1
+    setAudioTrackOptions(
+      audioTracks.map((track, index) => ({
+        id: typeof track.id === 'number' ? track.id : index,
+        label: formatAudioTrackLabel(track, index),
+        selected:
+          (typeof track.id === 'number' ? track.id : index) === currentAudioTrack,
+      })),
+    )
   }, [])
 
   const requestFullscreen = useCallback(async () => {
@@ -94,6 +211,41 @@ export function useHlsPlayback({
     }
   }, [])
 
+  const setQuality = useCallback(
+    (qualityId: number) => {
+      const hls = hlsRef.current as
+        | (Hls & {
+            currentLevel?: number
+            nextLevel?: number
+            loadLevel?: number
+          })
+        | null
+
+      if (!hls) {
+        return
+      }
+
+      hls.currentLevel = qualityId
+      hls.nextLevel = qualityId
+      hls.loadLevel = qualityId
+      syncHlsMetadata()
+    },
+    [syncHlsMetadata],
+  )
+
+  const setAudioTrack = useCallback(
+    (trackId: number) => {
+      const hls = hlsRef.current as (Hls & { audioTrack?: number }) | null
+      if (!hls) {
+        return
+      }
+
+      hls.audioTrack = trackId
+      syncHlsMetadata()
+    },
+    [syncHlsMetadata],
+  )
+
   useEffect(() => {
     const video = videoRef.current
 
@@ -102,6 +254,8 @@ export function useHlsPlayback({
     }
 
     destroyPlayer()
+    setQualityOptions([])
+    setAudioTrackOptions([])
 
     if (!src) {
       return
@@ -210,8 +364,21 @@ export function useHlsPlayback({
       })
 
       hls.on(HlsLibrary.Events.MANIFEST_PARSED, () => {
+        syncHlsMetadata()
         setInternalStatus('ready')
         void tryPlay()
+      })
+
+      hls.on(HlsLibrary.Events.LEVEL_SWITCHED, () => {
+        syncHlsMetadata()
+      })
+
+      hls.on(HlsLibrary.Events.AUDIO_TRACKS_UPDATED, () => {
+        syncHlsMetadata()
+      })
+
+      hls.on(HlsLibrary.Events.AUDIO_TRACK_SWITCHED, () => {
+        syncHlsMetadata()
       })
 
       hls.on(HlsLibrary.Events.ERROR, (_, data) => {
@@ -239,7 +406,7 @@ export function useHlsPlayback({
     void attachManagedHls()
 
     return cleanup
-  }, [autoPlay, destroyPlayer, retryToken, src, startMuted])
+  }, [autoPlay, destroyPlayer, retryToken, src, startMuted, syncHlsMetadata])
 
   return {
     videoRef,
@@ -247,6 +414,10 @@ export function useHlsPlayback({
     error: src ? internalError : null,
     isMuted,
     setMuted: updateMutedState,
+    qualityOptions,
+    audioTrackOptions,
+    setQuality,
+    setAudioTrack,
     play,
     requestFullscreen,
   }

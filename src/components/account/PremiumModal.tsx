@@ -17,13 +17,6 @@ type PremiumModalProps = {
   onUnlockSuccess?: () => Promise<void> | void
 }
 
-const FALLBACK_NETWORKS: PaymentProvider[] = [
-  { id: 'tigo', name: 'Tigo', logoUrl: null, active: true },
-  { id: 'mpesa', name: 'M-Pesa', logoUrl: null, active: true },
-  { id: 'airtel', name: 'Airtel', logoUrl: null, active: true },
-  { id: 'halopesa', name: 'HaloPesa', logoUrl: null, active: true },
-]
-
 const BENEFITS = [
   'Ukilipia Una Tazama Channel zote',
   'Channel Zote Ni HD & 4K Streaming',
@@ -76,7 +69,7 @@ export function PremiumModal({
   const [failureReason, setFailureReason] = useState('')
   const [successExpiresAt, setSuccessExpiresAt] = useState<string | null>(null)
   const [finalizingSuccess, setFinalizingSuccess] = useState(false)
-  const [providers, setProviders] = useState<PaymentProvider[]>(FALLBACK_NETWORKS)
+  const [providers, setProviders] = useState<PaymentProvider[]>([])
   const pollingDoneRef = useRef(false)
 
   const selectedAmountDisplay = selectedPlan
@@ -127,11 +120,13 @@ export function PremiumModal({
     void (async () => {
       try {
         const liveProviders = await getPaymentProviders()
-        if (!cancelled && liveProviders.length) {
+        if (!cancelled) {
           setProviders(liveProviders)
         }
       } catch {
-        // Keep fallback providers quietly.
+        if (!cancelled) {
+          setProviders([])
+        }
       }
     })()
 
@@ -210,7 +205,7 @@ export function PremiumModal({
       })
 
       setOrderId(payment.orderId)
-      setRemainingSeconds(payment.expiresInSeconds ?? 180)
+      setRemainingSeconds(payment.expiresInSeconds ?? 0)
       setStep(3)
     } catch (error) {
       setFailureReason(error instanceof Error ? error.message : 'Malipo yameshindikana.')

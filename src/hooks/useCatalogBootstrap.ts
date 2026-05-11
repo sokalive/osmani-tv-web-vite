@@ -10,19 +10,12 @@ import {
   fetchPopupSettings,
   fetchWhatsappSettings,
 } from '../services/api/osmaniAdminService'
-import { fetchLegacyApiStatus } from '../services/api/osmaniTvService'
 
 type LoadState = {
   data: CatalogBootstrap | null
   selectedChannel: ChannelViewModel | null
   loading: boolean
   error: string | null
-}
-
-const defaultSettings = {
-  freeMode: false,
-  emergencyMode: false,
-  maintenanceMode: false,
 }
 
 export function useCatalogBootstrap() {
@@ -49,19 +42,21 @@ export function useCatalogBootstrap() {
             fetchPopupSettings(),
             fetchWhatsappSettings(),
           ])
-
-        const [legacyApiStatus] = await Promise.allSettled([fetchLegacyApiStatus()])
-        const categories = await fetchCategories(channels)
+        const effectiveChannels = settings.freeMode
+          ? channels.map((channel) => ({
+              ...channel,
+              accessType: 'free' as const,
+            }))
+          : channels
+        const categories = await fetchCategories(effectiveChannels)
 
         const data: CatalogBootstrap = {
-          channels,
+          channels: effectiveChannels,
           categories,
           banners,
-          settings: settings ?? defaultSettings,
+          settings,
           popupSettings,
           whatsappSettings,
-          legacyApiStatus:
-            legacyApiStatus.status === 'fulfilled' ? legacyApiStatus.value : null,
         }
 
         if (disposed) {
@@ -70,7 +65,7 @@ export function useCatalogBootstrap() {
 
         setState({
           data,
-          selectedChannel: pickDefaultChannel(channels, env.defaultChannelId),
+          selectedChannel: pickDefaultChannel(effectiveChannels, env.defaultChannelId),
           loading: false,
           error: null,
         })

@@ -70,11 +70,27 @@ export type LegacyApiStatus = {
   online: boolean
 }
 
+export type ServerHealthChannel = {
+  name: string
+  status: string
+  responseMs: number | null
+  error: string | null
+}
+
+export type ServerHealthSnapshot = {
+  totalChannels: number
+  onlineChannels: number
+  offlineChannels: number
+  serverTime: string | null
+  channels: ServerHealthChannel[]
+}
+
 export type ChannelRow = {
   id: string
   name: string
   category: string
   bottomTab: string
+  displaySection: string
   thumbnailUrl: string | null
   isLive: boolean
   isHD: boolean
@@ -109,6 +125,8 @@ export type ChannelViewModel = {
   id: string
   name: string
   category: string
+  bottomTab: string
+  displaySection: string
   thumbnailUrl: string | null
   isLive: boolean
   isHD: boolean
@@ -139,5 +157,4 @@ export type CatalogBootstrap = {
   settings: AppModeSettings
   popupSettings: PopupSettings | null
   whatsappSettings: WhatsappSettings | null
-  legacyApiStatus: LegacyApiStatus | null
 }

@@ -49,7 +49,6 @@ export function PlayerPage() {
   const navigate = useNavigate()
   const params = useParams()
   const { data, selectedChannel } = useCatalogOutlet()
-  const [sourceIndex, setSourceIndex] = useState(0)
   const [retryToken, setRetryToken] = useState(0)
   const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain')
   const [pickerKind, setPickerKind] = useState<'language' | 'quality' | null>(null)
@@ -67,7 +66,10 @@ export function PlayerPage() {
     )
   }, [data?.channels, params.channelId, selectedChannel])
 
-  const activeSource = channel?.playbackCandidates[sourceIndex] ?? channel?.playbackCandidates[0] ?? null
+  const activeSource =
+    channel?.playbackCandidates.find((candidate) => candidate.isDirectManifest) ??
+    channel?.playbackCandidates[0] ??
+    null
   const playbackSrc =
     channel?.playbackReadiness === 'ready' && activeSource
       ? activeSource.proxiedUrl
@@ -79,46 +81,50 @@ export function PlayerPage() {
     error,
     isMuted,
     setMuted,
+    qualityOptions: availableQualityOptions,
+    audioTrackOptions: availableAudioTrackOptions,
+    setQuality,
+    setAudioTrack,
     play,
     requestFullscreen,
   } = useHlsPlayback({
     src: playbackSrc,
     autoPlay: true,
     startMuted: true,
-    retryToken: sourceIndex + retryToken,
+    retryToken,
   })
 
   const qualityOptions = useMemo(
     () =>
-      channel?.playbackCandidates.map((candidate, index) => ({
-        id: candidate.id,
-        label: candidate.label,
-        selected: index === sourceIndex,
+      availableQualityOptions.map((option) => ({
+        id: option.id,
+        label: option.label,
+        selected: option.selected,
         onSelect: () => {
-          setSourceIndex(index)
+          setQuality(option.id)
           setPickerKind(null)
         },
-      })) ?? [],
-    [channel?.playbackCandidates, sourceIndex],
+      })),
+    [availableQualityOptions, setQuality],
   )
 
   const languageOptions = useMemo(
-    () => [
-      {
-        id: 'sw',
-        label: 'Default Audio',
-        selected: true,
-        onSelect: () => setPickerKind(null),
-      },
-      {
-        id: 'auto',
-        label: 'Auto Detect',
-        selected: false,
-        onSelect: () => setPickerKind(null),
-      },
-    ],
-    [],
+    () =>
+      availableAudioTrackOptions.map((option) => ({
+        id: option.id,
+        label: option.label,
+        selected: option.selected,
+        onSelect: () => {
+          setAudioTrack(option.id)
+          setPickerKind(null)
+        },
+      })),
+    [availableAudioTrackOptions, setAudioTrack],
   )
+  const selectedQualityLabel =
+    qualityOptions.find((option) => option.selected)?.label || 'Quality'
+  const selectedLanguageLabel =
+    languageOptions.find((option) => option.selected)?.label || 'Lugha'
 
   const controlsVisible = controlsPinned || Boolean(pickerKind) || status !== 'playing'
   const showCenterState = status !== 'playing'
@@ -253,7 +259,7 @@ export function PlayerPage() {
               <span className="player-action__icon">
                 <PlayerActionIcon kind="language" />
               </span>
-              Lugha
+              {selectedLanguageLabel}
             </button>
             <button
               type="button"
@@ -263,7 +269,7 @@ export function PlayerPage() {
               <span className="player-action__icon">
                 <PlayerActionIcon kind="quality" />
               </span>
-              Quality
+              {selectedQualityLabel}
             </button>
             <button
               type="button"
@@ -325,6 +331,14 @@ export function PlayerPage() {
                     {option.selected ? <span>Selected</span> : null}
                   </button>
                 ))}
+
+                {(pickerKind === 'quality' ? qualityOptions : languageOptions).length === 0 ? (
+                  <p className="player-picker__empty">
+                    {pickerKind === 'quality'
+                      ? 'Hakuna ubora wa ziada kutoka kwenye stream hii.'
+                      : 'Hakuna lugha au audio tracks za ziada kwenye stream hii.'}
+                  </p>
+                ) : null}
 
                 {pickerKind === 'language' ? (
                   <button

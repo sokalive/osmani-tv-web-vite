@@ -4,25 +4,47 @@ export const homeFilters = ['Zote', 'Trending', 'Sports', 'Movies'] as const
 
 export type HomeFilter = (typeof homeFilters)[number]
 
+export function effectiveCatalogSection(
+  channel: Pick<ChannelViewModel, 'displaySection' | 'category' | 'bottomTab'>,
+) {
+  const displaySection = channel.displaySection.trim().toLowerCase()
+  if (displaySection === 'sports' || displaySection === 'movies') {
+    return displaySection
+  }
+  if (displaySection === 'general') {
+    return 'general'
+  }
+
+  const category = channel.category.trim().toLowerCase()
+  if (category === 'sports' || category === 'sport') {
+    return 'sports'
+  }
+  if (category === 'movies' || category === 'movie' || category === 'tamthilia') {
+    return 'movies'
+  }
+  if (category === 'general' || category === 'zote') {
+    return 'general'
+  }
+
+  const bottomTab = channel.bottomTab.trim().toLowerCase()
+  if (bottomTab === 'sports' || bottomTab === 'sport') {
+    return 'sports'
+  }
+  if (bottomTab === 'movies' || bottomTab === 'movie' || bottomTab === 'tamthilia') {
+    return 'movies'
+  }
+  if (bottomTab === 'general') {
+    return 'general'
+  }
+
+  return displaySection || 'general'
+}
+
 export function matchCatalogSection(
   channel: ChannelViewModel,
   section: 'sports' | 'movies' | 'general',
 ) {
-  const category = channel.category.trim().toLowerCase()
-
-  if (section === 'sports') {
-    return category === 'sports' || category === 'sport'
-  }
-
-  if (section === 'movies') {
-    return (
-      category === 'movies' ||
-      category === 'movie' ||
-      category === 'tamthilia'
-    )
-  }
-
-  return category === 'general' || category === 'zote'
+  return effectiveCatalogSection(channel) === section
 }
 
 export function matchesHomeFilter(channel: ChannelViewModel, filter: HomeFilter) {

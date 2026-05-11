@@ -1018,6 +1018,14 @@ svg {
   font-weight: 700;
 }
 
+.player-picker__empty {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.83rem;
+  line-height: 1.45;
+  text-align: center;
+}
+
 .account-screen--strict {
   gap: 0;
 }

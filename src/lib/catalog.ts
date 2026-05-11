@@ -7,6 +7,7 @@ import type {
   PlaybackCandidate,
   PlaybackReadiness,
   PopupSettings,
+  ServerHealthSnapshot,
   WhatsappSettings,
 } from '../types/osmani'
 
@@ -34,6 +35,20 @@ function normalizePlayerType(raw: unknown): ChannelRow['playerType'] {
 function asBoolean(raw: unknown, fallback = false) {
   if (typeof raw === 'boolean') {
     return raw
+  }
+
+  if (typeof raw === 'number') {
+    return raw !== 0
+  }
+
+  if (typeof raw === 'string') {
+    const value = raw.trim().toLowerCase()
+    if (['true', '1', 'yes', 'on', 'active', 'live'].includes(value)) {
+      return true
+    }
+    if (['false', '0', 'no', 'off', 'inactive', 'offline'].includes(value)) {
+      return false
+    }
   }
 
   return fallback
@@ -67,30 +82,96 @@ function toProxyUrl(
 
 export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
   return {
-    id: String(raw.id ?? raw._id ?? ''),
+    id: String(raw.id ?? raw._id ?? raw.channel_id ?? ''),
     name: asString(raw.name) || 'Untitled channel',
     category: asString(raw.category) || 'General',
+    displaySection:
+      asString(raw.displaySection ?? raw.display_section) || '',
     bottomTab:
       asString(raw.bottomTabsDisplay) || asString(raw.bottomTab) || 'General',
     thumbnailUrl:
-      asString(raw.thumbnailUrl) || asString(raw.thumbnail) || null,
+      asString(raw.thumbnailUrl ?? raw.thumbnail_url) ||
+      asString(raw.thumbnail) ||
+      null,
     isLive: asBoolean(raw.isLive, asBoolean(raw.live, true)),
-    isHD: asBoolean(raw.isHD, asBoolean(raw.hd, false)),
+    isHD:
+      raw.isHD !== undefined
+        ? asBoolean(raw.isHD, true)
+        : raw.hd !== undefined
+          ? asBoolean(raw.hd, true)
+          : true,
     isActive: asBoolean(raw.isActive, asBoolean(raw.active, true)),
     showInApp: asBoolean(raw.showInApp, asBoolean(raw.show_in_app, true)),
     accessType:
-      asString(raw.accessType).toLowerCase() === 'premium'
+      asString(raw.accessType).toLowerCase() === 'premium' ||
+      asBoolean(raw.accessPremium, asBoolean(raw.access_premium))
         ? 'premium'
         : 'free',
     accessPremium: asBoolean(raw.accessPremium, asBoolean(raw.access_premium)),
     playerType: normalizePlayerType(raw.playerType ?? raw.player_type),
-    url: asString(raw.url),
+    url: asString(raw.url ?? raw.stream_url),
     backupStream1: asString(raw.backupStream1 ?? raw.backup_stream_1),
     backupStream2: asString(raw.backupStream2 ?? raw.backup_stream_2),
-    origin: asString(raw.origin),
+    origin: asString(raw.origin ?? raw.stream_origin),
     referer: asString(raw.referer ?? raw.referrer),
     userAgent: asString(raw.userAgent ?? raw.user_agent),
   }
+}
+
+export function effectiveCatalogSection(
+  channel: Pick<ChannelRow, 'displaySection' | 'category' | 'bottomTab'>,
+) {
+  const displaySection = channel.displaySection.trim().toLowerCase()
+  if (displaySection === 'sports' || displaySection === 'movies') {
+    return displaySection
+  }
+  if (displaySection === 'general') {
+    return 'general'
+  }
+
+  const category = channel.category.trim().toLowerCase()
+  if (category === 'sports' || category === 'sport') {
+    return 'sports'
+  }
+  if (category === 'movies' || category === 'movie' || category === 'tamthilia') {
+    return 'movies'
+  }
+  if (category === 'general' || category === 'zote') {
+    return 'general'
+  }
+
+  const bottomTab = channel.bottomTab.trim().toLowerCase()
+  if (bottomTab === 'sports' || bottomTab === 'sport') {
+    return 'sports'
+  }
+  if (bottomTab === 'movies' || bottomTab === 'movie' || bottomTab === 'tamthilia') {
+    return 'movies'
+  }
+  if (bottomTab === 'general') {
+    return 'general'
+  }
+
+  return displaySection || 'general'
+}
+
+function findServerHealthForChannel(
+  serverHealth: ServerHealthSnapshot | null | undefined,
+  name: string,
+) {
+  if (!serverHealth || !Array.isArray(serverHealth.channels)) {
+    return null
+  }
+
+  const wanted = String(name ?? '').trim().toLowerCase()
+  if (!wanted) {
+    return null
+  }
+
+  return (
+    serverHealth.channels.find(
+      (row) => String(row.name ?? '').trim().toLowerCase() === wanted,
+    ) || null
+  )
 }
 
 function createPlaybackCandidates(channel: ChannelRow) {
@@ -152,17 +233,30 @@ function getPlaybackState(channel: ChannelRow, candidates: PlaybackCandidate[]) 
   }
 }
 
-export function toChannelViewModel(raw: RawChannelRecord): ChannelViewModel {
+export function toChannelViewModel(
+  raw: RawChannelRecord,
+  serverHealth?: ServerHealthSnapshot | null,
+): ChannelViewModel {
   const channel = normalizeChannel(raw)
+  const health = findServerHealthForChannel(serverHealth, channel.name)
+  const healthStatus = String(health?.status ?? '').trim().toLowerCase()
   const playbackCandidates = createPlaybackCandidates(channel)
   const playbackState = getPlaybackState(channel, playbackCandidates)
+  const isLive =
+    healthStatus === 'online'
+      ? true
+      : healthStatus === 'offline'
+        ? false
+        : channel.isLive
 
   return {
     id: channel.id,
     name: channel.name,
     category: channel.category,
+    bottomTab: channel.bottomTab,
+    displaySection: channel.displaySection,
     thumbnailUrl: channel.thumbnailUrl,
-    isLive: channel.isLive,
+    isLive,
     isHD: channel.isHD,
     isActive: channel.isActive,
     showInApp: channel.showInApp,

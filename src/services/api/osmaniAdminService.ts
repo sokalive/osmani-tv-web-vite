@@ -11,16 +11,72 @@ import type {
   BannerRecord,
   ChannelViewModel,
   PopupSettings,
+  ServerHealthSnapshot,
   WhatsappSettings,
 } from '../../types/osmani'
 import { osmaniAdminClient } from './osmaniAdminClient'
 
 type RawChannelRecord = Record<string, unknown>
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return value != null && typeof value === 'object' && !Array.isArray(value)
+}
+
+export async function fetchServerHealth() {
+  try {
+    const payload = await osmaniAdminClient.get<unknown>('/api/server-health')
+    if (!isPlainObject(payload)) {
+      return null
+    }
+
+    return {
+      totalChannels: Number(payload.total_channels ?? payload.totalChannels ?? 0),
+      onlineChannels: Number(payload.online_channels ?? payload.onlineChannels ?? 0),
+      offlineChannels: Number(payload.offline_channels ?? payload.offlineChannels ?? 0),
+      serverTime:
+        typeof payload.server_time === 'string'
+          ? payload.server_time
+          : typeof payload.serverTime === 'string'
+            ? payload.serverTime
+            : null,
+      channels: Array.isArray(payload.channels)
+        ? payload.channels
+            .map((row) => {
+              if (!isPlainObject(row)) {
+                return null
+              }
+
+              return {
+                name: typeof row.name === 'string' ? row.name : '',
+                status: typeof row.status === 'string' ? row.status : '',
+                responseMs:
+                  typeof row.response_ms === 'number'
+                    ? row.response_ms
+                    : typeof row.responseMs === 'number'
+                      ? row.responseMs
+                      : null,
+                error: typeof row.error === 'string' ? row.error : null,
+              }
+            })
+            .filter(
+              (row): row is ServerHealthSnapshot['channels'][number] => Boolean(row && row.name),
+            )
+        : [],
+    } satisfies ServerHealthSnapshot
+  } catch {
+    return null
+  }
+}
+
 export async function fetchChannels() {
-  const payload = await osmaniAdminClient.get<RawChannelRecord[]>(env.channelsPath)
+  const [payload, serverHealth] = await Promise.all([
+    osmaniAdminClient.get<RawChannelRecord[]>(env.channelsPath),
+    fetchServerHealth(),
+  ])
   const channels = Array.isArray(payload)
-    ? payload.map(toChannelViewModel).filter((channel) => channel.isActive)
+    ? payload
+        .map((row) => toChannelViewModel(row, serverHealth))
+        .filter((channel) => channel.isActive)
     : []
 
   return channels.filter((channel) => channel.showInApp)
