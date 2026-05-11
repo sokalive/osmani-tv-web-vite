@@ -125,15 +125,6 @@ svg {
   gap: 8px;
 }
 
-.catalog-screen__eyebrow {
-  margin: 0 0 6px;
-  color: var(--tab-active);
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
 .catalog-screen h1,
 .player-screen__details h1,
 .account-screen h1 {
@@ -155,12 +146,44 @@ svg {
 .player-action,
 .player-screen__back {
   min-height: 42px;
-  padding: 0 16px;
   border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.catalog-screen__refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  color: #111827;
+  background: linear-gradient(90deg, #ffcb3d, #e5a020);
+  font-size: 0.9rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.02em;
+}
+
+.catalog-screen__refresh svg {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.account-action,
+.player-action,
+.player-screen__back {
+  padding: 0 16px;
   color: var(--white);
   background: rgba(26, 18, 23, 0.92);
   border: 1px solid var(--card-border);
-  box-shadow: var(--shadow);
 }
 
 .catalog-screen__filters {

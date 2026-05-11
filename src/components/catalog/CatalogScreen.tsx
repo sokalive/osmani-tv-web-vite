@@ -57,7 +57,6 @@ export function CatalogScreen({
       <header className="catalog-screen__header">
         <div className="catalog-screen__brand-row">
           <div>
-            <p className="catalog-screen__eyebrow">Osmani TV</p>
             <h1>{title}</h1>
             <p className="catalog-screen__subtitle">{subtitle}</p>
           </div>
@@ -67,7 +66,11 @@ export function CatalogScreen({
             className="catalog-screen__refresh"
             onClick={reload}
           >
-            Refresh
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 12a8 8 0 1 1-2.35-5.65" />
+              <path d="M20 4v5h-5" />
+            </svg>
+            <span>Refresh</span>
           </button>
         </div>
 
