@@ -9,6 +9,7 @@ export type PlaybackGateReason = string
 export type PlaybackGateResult = {
   allowed: boolean
   reason: PlaybackGateReason | null
+  requiresPayment: boolean
 }
 
 export type BannerRecord = {
@@ -58,6 +59,7 @@ export type PaymentProvider = {
 
 export type SubscriptionStatus = {
   active: boolean
+  playbackAllowed: boolean | null
   expiresAt: string | null
   startedAt: string | null
   serverTime: string | null

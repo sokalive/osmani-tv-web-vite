@@ -161,6 +161,7 @@ export function PlayerPage() {
     data,
     selectedChannel,
     gateForPlayback,
+    requestPremiumGate,
     requestEmergencyModal,
     subscriptionVersion,
   } = useCatalogOutlet()
@@ -503,11 +504,12 @@ export function PlayerPage() {
       setAccessDenied(!gate.allowed)
       if (!gate.allowed) {
         void exitImmersivePlayback().finally(() => {
-          if (gate.reason) {
+          if (!gate.requiresPayment) {
             navigate('/')
             return
           }
-          navigate('/account', { state: { openPremiumModal: true } })
+          requestPremiumGate(channel)
+          navigate('/')
         })
       }
     })
@@ -521,6 +523,7 @@ export function PlayerPage() {
     freeMode,
     gateForPlayback,
     navigate,
+    requestPremiumGate,
     subscriptionVersion,
   ])
 

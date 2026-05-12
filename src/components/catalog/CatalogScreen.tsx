@@ -83,6 +83,7 @@ export function CatalogScreen({
     selectChannel,
     reload,
     gateForPlayback,
+    requestPremiumGate,
     requestEmergencyModal,
   } = useCatalogOutlet()
   const [selectedFilter, setSelectedFilter] = useState<HomeFilter>('Zote')
@@ -122,8 +123,8 @@ export function CatalogScreen({
     if (!freeMode && channel.accessType === 'premium') {
       const gate = await gateForPlayback(channel, `catalog:${channel.id}`)
       if (!gate.allowed) {
-        if (!gate.reason) {
-          navigate('/account', { state: { openPremiumModal: true } })
+        if (gate.requiresPayment) {
+          requestPremiumGate(channel)
         }
         return
       }

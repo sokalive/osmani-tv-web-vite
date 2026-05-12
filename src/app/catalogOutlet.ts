@@ -24,6 +24,7 @@ export type CatalogOutletContext = {
     channel: Pick<ChannelViewModel, 'accessType'> | null,
     reason?: string,
   ) => Promise<PlaybackGateResult>
+  requestPremiumGate: (channel?: ChannelViewModel | null) => void
   requestEmergencyModal: () => void
 }
 

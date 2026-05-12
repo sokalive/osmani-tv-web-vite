@@ -55,6 +55,30 @@ function pickNumber(...values: unknown[]) {
   return null
 }
 
+function pickBoolean(...values: unknown[]) {
+  for (const value of values) {
+    if (value === true || value === false) {
+      return value
+    }
+
+    if (value === 1 || value === 0) {
+      return value === 1
+    }
+
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase()
+      if (['true', '1', 'yes', 'on', 'allowed', 'active'].includes(normalized)) {
+        return true
+      }
+      if (['false', '0', 'no', 'off', 'denied', 'inactive'].includes(normalized)) {
+        return false
+      }
+    }
+  }
+
+  return null
+}
+
 function pickActive(body: PlainObject) {
   const candidates = [
     body.active,
@@ -257,6 +281,36 @@ function pickPlaybackGateReason(body: PlainObject): PlaybackGateReason | null {
   )
 }
 
+function pickPlaybackAllowed(body: PlainObject) {
+  const data = isPlainObject(body.data) ? body.data : null
+  const subscription = isPlainObject(body.subscription) ? body.subscription : null
+  const dataSubscription = pickDataSubscription(body)
+
+  return pickBoolean(
+    body.playbackAllowed,
+    body.playback_allowed,
+    data?.playbackAllowed,
+    data?.playback_allowed,
+    subscription?.playbackAllowed,
+    subscription?.playback_allowed,
+    dataSubscription?.playbackAllowed,
+    dataSubscription?.playback_allowed,
+  )
+}
+
+function withFingerprintAliases(
+  deviceId: string,
+  deviceFingerprint: string,
+  extra: PlainObject = {},
+) {
+  return {
+    device_id: deviceId,
+    device_fingerprint: deviceFingerprint,
+    fingerprint: deviceFingerprint,
+    ...extra,
+  }
+}
+
 function pickAmount(body: PlainObject) {
   const data = isPlainObject(body.data) ? body.data : null
   const subscription = isPlainObject(body.subscription) ? body.subscription : null
@@ -352,6 +406,7 @@ function normalizeVerifyResponse(payload: unknown): SubscriptionStatus {
   if (!isPlainObject(payload)) {
     return {
       active: false,
+      playbackAllowed: null,
       expiresAt: null,
       startedAt: null,
       serverTime: null,
@@ -377,6 +432,7 @@ function normalizeVerifyResponse(payload: unknown): SubscriptionStatus {
 
   return {
     active: pickActive(payload),
+    playbackAllowed: pickPlaybackAllowed(payload),
     expiresAt: pickString(
       payload.expires_at,
       payload.expiresAt,
@@ -524,10 +580,10 @@ export async function verifySubscription(
   deviceId: string,
   deviceFingerprint: string,
 ) {
-  const payload = await osmaniAdminPaymentClient.post<unknown>('/api/subscription/verify', {
-    device_id: deviceId,
-    device_fingerprint: deviceFingerprint,
-  })
+  const payload = await osmaniAdminPaymentClient.post<unknown>(
+    '/api/subscription/verify',
+    withFingerprintAliases(deviceId, deviceFingerprint),
+  )
 
   return normalizeVerifyResponse(payload)
 }
@@ -827,10 +883,7 @@ export async function recoverSubscription(
 ) {
   const payload = await osmaniAdminPaymentClient.post<unknown>(
     '/api/subscription/recover',
-    {
-      device_id: deviceId,
-      device_fingerprint: deviceFingerprint,
-    },
+    withFingerprintAliases(deviceId, deviceFingerprint),
   )
 
   return normalizeVerifyResponse(payload)
@@ -843,13 +896,11 @@ export async function acknowledgeManualGift(
 ) {
   return osmaniAdminPaymentClient.post<unknown>(
     '/api/subscription/acknowledge-manual-gift',
-    {
-      device_id: deviceId,
-      device_fingerprint: deviceFingerprint,
+    withFingerprintAliases(deviceId, deviceFingerprint, {
       manual_gift_ack_key: String(manualGiftAckKey).trim(),
       manualGiftAckKey: String(manualGiftAckKey).trim(),
       gift_ack_key: String(manualGiftAckKey).trim(),
-    },
+    }),
   )
 }
 

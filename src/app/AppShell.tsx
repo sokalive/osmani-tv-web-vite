@@ -6,6 +6,7 @@ import { useCatalogBootstrap } from '../hooks/useCatalogBootstrap'
 import { BottomNav } from '../components/layout/BottomNav'
 import { WhatsAppFab } from '../components/layout/WhatsAppFab'
 import { ManualSubscriptionGiftModal } from '../components/modals/ManualSubscriptionGiftModal'
+import { PremiumModal } from '../components/account/PremiumModal'
 import { OtaDebugOverlay } from '../components/modals/OtaDebugOverlay'
 import { PopupSettingsModal } from '../components/modals/PopupSettingsModal'
 import { SubscriptionExpiryReminderModal } from '../components/modals/SubscriptionExpiryReminderModal'
@@ -28,6 +29,7 @@ import { trackInstallOnce } from '../services/analytics'
 import { startPresence, stopPresence } from '../services/presenceTracker'
 import {
   acknowledgeManualGift,
+  fetchSubscriptionStatus,
   recoverSubscription,
   verifySubscription,
 } from '../services/api/subscriptionService'
@@ -140,6 +142,14 @@ function mapPlaybackGateReasonToBlockedReason(reason: string | null | undefined)
   return null
 }
 
+function isPlaybackAllowed(subscription: SubscriptionStatus | null | undefined) {
+  if (!subscription) {
+    return false
+  }
+
+  return subscription.playbackAllowed ?? subscription.active
+}
+
 function normalizeTransferConfirmEvent(payload: unknown): TransferConfirmEvent | null {
   if (!payload || typeof payload !== 'object') {
     return null
@@ -237,6 +247,9 @@ export function AppShell() {
     useState<TransferredAwayReason | null>(null)
   const [blockedPaused, setBlockedPaused] = useState(false)
   const [blockedRecovering, setBlockedRecovering] = useState(false)
+  const [premiumModalVisible, setPremiumModalVisible] = useState(false)
+  const [premiumModalChannel, setPremiumModalChannel] =
+    useState<ChannelViewModel | null>(null)
   const isSubscribed = subscription?.active === true
   const updateRuntime = useUpdateRuntime()
 
@@ -245,6 +258,7 @@ export function AppShell() {
       _reason = 'manual',
       options: {
         recover?: boolean
+        verify?: boolean
       } = {},
     ) => {
       try {
@@ -253,7 +267,9 @@ export function AppShell() {
           await recoverSubscription(deviceId, deviceFingerprint).catch(() => null)
         }
 
-        const next = await verifySubscription(deviceId, deviceFingerprint)
+        const next = options.verify
+          ? await verifySubscription(deviceId, deviceFingerprint)
+          : await fetchSubscriptionStatus(deviceId)
         const runtimeBlockedReason = mapPlaybackGateReasonToBlockedReason(
           next.playbackGateReason,
         )
@@ -300,21 +316,38 @@ export function AppShell() {
       reason = 'playback',
     ): Promise<PlaybackGateResult> => {
       if (catalog.data?.settings.freeMode) {
-        return { allowed: true, reason: null }
+        return { allowed: true, reason: null, requiresPayment: false }
       }
 
       if (!channel || channel.accessType !== 'premium') {
-        return { allowed: true, reason: null }
+        return { allowed: true, reason: null, requiresPayment: false }
       }
 
-      const next = await refreshSubscription(`gate:${reason}`)
+      const next = await refreshSubscription(`gate:${reason}`, { verify: true })
+      const gateReason = next?.playbackGateReason ?? null
+      const blockedReason = mapPlaybackGateReasonToBlockedReason(gateReason)
+      const allowed = isPlaybackAllowed(next)
       return {
-        allowed: next?.active === true,
-        reason: next?.playbackGateReason ?? null,
+        allowed,
+        reason: gateReason,
+        requiresPayment: !allowed && !blockedReason,
       }
     },
     [catalog.data?.settings.freeMode, refreshSubscription],
   )
+
+  const closePremiumGate = useCallback(() => {
+    setPremiumModalVisible(false)
+    setPremiumModalChannel(null)
+    if (blockedReason) {
+      setBlockedPaused(false)
+    }
+  }, [blockedReason])
+
+  const requestPremiumGate = useCallback((channel?: ChannelViewModel | null) => {
+    setPremiumModalChannel(channel ?? null)
+    setPremiumModalVisible(true)
+  }, [])
 
   const outletContext: CatalogOutletContext = useMemo(
     () => ({
@@ -329,6 +362,7 @@ export function AppShell() {
       subscriptionVersion,
       refreshSubscription,
       gateForPlayback,
+      requestPremiumGate,
       requestEmergencyModal,
     }),
     [
@@ -343,6 +377,7 @@ export function AppShell() {
       subscriptionVersion,
       refreshSubscription,
       gateForPlayback,
+      requestPremiumGate,
       requestEmergencyModal,
     ],
   )
@@ -587,14 +622,14 @@ export function AppShell() {
       writeDismissedExpiryReminderKey(expiryReminderKey)
     }
     setExpiryReminderKey(null)
-    navigate('/account', { state: { openPremiumModal: true } })
-  }, [expiryReminderKey, navigate])
+    requestPremiumGate(null)
+  }, [expiryReminderKey, requestPremiumGate])
 
   const handleOpenPlansFromBlockedState = useCallback(() => {
     setBlockedPaused(true)
     setBlockedRecovering(false)
-    navigate('/account', { state: { openPremiumModal: true } })
-  }, [navigate])
+    requestPremiumGate(null)
+  }, [requestPremiumGate])
 
   const handleRecoverFromBlockedState = useCallback(async () => {
     setBlockedRecovering(true)
@@ -608,6 +643,18 @@ export function AppShell() {
     setBlockedPaused(true)
     navigate('/account', { state: { openTransferRecover: true } })
   }, [navigate, refreshSubscription])
+
+  const handlePremiumUnlockSuccess = useCallback(async () => {
+    const next = await refreshSubscription('premium-unlock', { verify: true })
+    if (!isPlaybackAllowed(next)) {
+      return
+    }
+
+    if (premiumModalChannel) {
+      catalog.selectChannel(premiumModalChannel)
+      navigate(`/player/${premiumModalChannel.id}`)
+    }
+  }, [catalog, navigate, premiumModalChannel, refreshSubscription])
 
   return (
     <div className={`app-shell${isPlayerRoute ? ' app-shell--player' : ''}`}>
@@ -673,6 +720,12 @@ export function AppShell() {
         onOpenPlans={handleOpenPlansFromBlockedState}
         onRecover={handleRecoverFromBlockedState}
         recovering={blockedRecovering}
+      />
+      <PremiumModal
+        visible={premiumModalVisible}
+        channelName={premiumModalChannel?.name}
+        onClose={closePremiumGate}
+        onUnlockSuccess={handlePremiumUnlockSuccess}
       />
       <UpdateOverlay
         visible={updateRuntime.state.visible}
