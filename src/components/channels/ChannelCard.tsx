@@ -28,12 +28,12 @@ export function ChannelCard({ channel, onSelect }: ChannelCardProps) {
         <div className="catalog-card__badges">
           <div className="catalog-card__badges-left">
             {channel.isHD ? <span className="badge badge--hd">HD</span> : <span className="badge badge--ghost" />}
-          </div>
-
-          <div className="catalog-card__badges-right">
             <span className={`badge ${channel.isLive ? 'badge--live' : 'badge--offline'}`}>
               {channel.isLive ? 'LIVE' : 'OFFLINE'}
             </span>
+          </div>
+
+          <div className="catalog-card__badges-right">
             <span className={`badge ${premium ? 'badge--premium' : 'badge--free'}`}>
               {accessBadge(channel)}
             </span>

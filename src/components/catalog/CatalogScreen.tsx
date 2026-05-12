@@ -15,6 +15,25 @@ import {
 const MAINTENANCE_USER_MESSAGE =
   'Habari, kuna marekebisho yanaendelea ndani ya app kwa muda mfupi. Tafadhali subiri.'
 
+function SearchIcon() {
+  return (
+    <svg
+      className="catalog-screen__search-icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M16 16l4 4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 function MaintenanceIcon() {
   return (
     <svg
@@ -119,28 +138,33 @@ export function CatalogScreen({
     <section className="catalog-screen">
       <header className="catalog-screen__header">
         <div className="catalog-screen__brand-row">
-          <div>
-            {mode === 'home' ? (
-              <OtaDebugTitleTap>
+          <div className="catalog-screen__title-wrap">
+            <div className="catalog-screen__title-line">
+              {mode === 'home' ? (
+                <OtaDebugTitleTap>
+                  <h1>{title}</h1>
+                </OtaDebugTitleTap>
+              ) : (
                 <h1>{title}</h1>
-              </OtaDebugTitleTap>
-            ) : (
-              <h1>{title}</h1>
-            )}
+              )}
+              {mode === 'home' ? <SearchIcon /> : null}
+            </div>
             <p className="catalog-screen__subtitle">{subtitle}</p>
           </div>
 
-          <button
-            type="button"
-            className="catalog-screen__refresh"
-            onClick={reload}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M20 12a8 8 0 1 1-2.35-5.65" />
-              <path d="M20 4v5h-5" />
-            </svg>
-            <span>Refresh</span>
-          </button>
+          <div className="catalog-screen__top-buttons">
+            <button
+              type="button"
+              className="catalog-screen__refresh"
+              onClick={reload}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 12a8 8 0 1 1-2.35-5.65" />
+                <path d="M20 4v5h-5" />
+              </svg>
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
 
         {showHero && data?.banners.length ? (
@@ -176,7 +200,10 @@ export function CatalogScreen({
             <span className="catalog-screen__count">{channels.length}</span>
           </div>
           {loading ? (
-            <p className="catalog-screen__meta">Inapakia chaneli...</p>
+            <div className="catalog-screen__status-row">
+              <span className="catalog-screen__status-spinner" aria-hidden="true" />
+              <p className="catalog-screen__meta">Inapakia chaneli...</p>
+            </div>
           ) : error ? (
             <p className="catalog-screen__meta catalog-screen__meta--error">{error}</p>
           ) : null}

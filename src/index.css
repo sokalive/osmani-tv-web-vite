@@ -110,12 +110,12 @@ svg {
 .catalog-screen,
 .account-screen {
   display: grid;
-  gap: 18px;
+  gap: 10px;
 }
 
 .catalog-screen__header {
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 
 .catalog-screen__brand-row {
@@ -125,20 +125,43 @@ svg {
   gap: 8px;
 }
 
+.catalog-screen__title-wrap {
+  flex: 1;
+  margin-right: 8px;
+}
+
+.catalog-screen__title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.catalog-screen__search-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--white);
+  flex: 0 0 auto;
+}
+
+.catalog-screen__top-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 .catalog-screen h1,
 .player-screen__details h1,
 .account-screen h1 {
   margin: 0;
   color: var(--white);
-  font-size: 1.9rem;
+  font-size: 28px;
   line-height: 1.05;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .catalog-screen__subtitle {
   margin: 4px 0 0;
   color: var(--muted);
-  font-size: 0.95rem;
+  font-size: 14px;
 }
 
 .catalog-screen__refresh,
@@ -154,22 +177,22 @@ svg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   align-self: flex-start;
-  min-height: 40px;
-  padding: 0 16px;
-  border-radius: 999px;
-  color: #111827;
-  background: linear-gradient(90deg, #ffcb3d, #e5a020);
-  font-size: 0.9rem;
-  font-weight: 800;
+  min-height: 0;
+  padding: 8px 14px;
+  border-radius: 12px;
+  color: #000000;
+  background: #ffcb3d;
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1;
-  letter-spacing: 0.02em;
+  box-shadow: none;
 }
 
 .catalog-screen__refresh svg {
-  width: 16px;
-  height: 16px;
+  width: 17px;
+  height: 17px;
   stroke: currentColor;
   fill: none;
   stroke-width: 2;
@@ -188,17 +211,30 @@ svg {
 
 .catalog-screen__filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 10px;
+  margin-top: 12px;
+  padding-right: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.catalog-screen__filters::-webkit-scrollbar {
+  display: none;
 }
 
 .catalog-filter {
-  border-radius: 999px;
-  min-height: 40px;
-  padding: 9px 18px;
+  flex: 0 0 auto;
+  border-radius: 50px;
+  min-height: 0;
+  padding: 10px 18px;
   color: var(--white);
   background: #2a2e37;
-  transition: background-color 140ms ease;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 .catalog-filter--active {
@@ -208,6 +244,7 @@ svg {
 .catalog-screen__section-row {
   display: grid;
   gap: 6px;
+  margin-top: 12px;
 }
 
 .catalog-screen__section-title {
@@ -218,31 +255,48 @@ svg {
 
 .catalog-screen__section-title h2 {
   margin: 0;
-  font-size: 1.22rem;
+  font-size: 20px;
   font-weight: 700;
 }
 
 .catalog-screen__count {
   min-width: 30px;
-  min-height: 24px;
-  padding: 0 9px;
+  min-height: 0;
+  padding: 3px 9px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border-radius: 10px;
   background: #334057;
-  font-size: 0.78rem;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .catalog-screen__meta {
   margin: 0;
   color: var(--muted);
-  font-size: 0.92rem;
+  font-size: 14px;
 }
 
 .catalog-screen__meta--error {
   color: #ff8a80;
+}
+
+.catalog-screen__status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding-inline: 2px;
+}
+
+.catalog-screen__status-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(30, 201, 103, 0.22);
+  border-top-color: #1ec967;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
 }
 
 .hero-carousel {
@@ -294,7 +348,7 @@ svg {
 }
 
 .hero-carousel__slide--pressable:active {
-  transform: scale(0.992);
+  transform: none;
 }
 
 .hero-carousel__slide img,
@@ -332,21 +386,19 @@ svg {
   color: #1ec967;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.5px;
 }
 
-.hero-carousel__badge,
-.badge {
+.hero-carousel__badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
   max-width: 92%;
   padding: 7px 16px;
   border-radius: 999px;
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.25px;
 }
 
 .hero-carousel__badge {
@@ -403,7 +455,8 @@ svg {
 .catalog-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  column-gap: 12px;
+  row-gap: 10px;
   align-items: start;
 }
 
@@ -415,8 +468,9 @@ svg {
   width: 100%;
   padding: 0;
   border-radius: 14px;
-  background: transparent;
-  box-shadow: var(--shadow);
+  background: var(--card);
+  overflow: hidden;
+  box-shadow: none;
 }
 
 .catalog-card__poster {
@@ -424,7 +478,7 @@ svg {
   aspect-ratio: 3 / 4;
   border-radius: 14px;
   overflow: hidden;
-  background: var(--card);
+  background: #283246;
 }
 
 .catalog-card__poster img,
@@ -446,6 +500,17 @@ svg {
   color: var(--muted);
   font-size: 2.5rem;
   font-weight: 800;
+}
+
+.catalog-card__badges .badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .catalog-card__badges {
@@ -493,10 +558,9 @@ svg {
   border-radius: 16px;
   background: var(--yellow-deep);
   color: #000000;
-  font-size: 0.82rem;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
   text-align: center;
-  box-shadow: var(--glow);
 }
 
 .catalog-card--skeleton .catalog-card__poster {
@@ -557,6 +621,7 @@ svg {
 .maintenance-home__wrap {
   display: grid;
   place-items: center;
+  min-height: 360px;
 }
 
 .maintenance-home {
