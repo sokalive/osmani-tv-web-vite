@@ -538,13 +538,13 @@ svg {
   right: 0;
   bottom: 0;
   height: 92px;
-  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.78));
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.72));
 }
 
 .catalog-card__title-pill {
   position: absolute;
-  left: 10px;
-  right: 10px;
+  left: 0;
+  right: 0;
   bottom: 10px;
   display: flex;
   justify-content: center;
