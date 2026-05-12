@@ -2,6 +2,7 @@ import { useOutletContext } from 'react-router-dom'
 import type {
   ChannelViewModel,
   CatalogBootstrap,
+  PlaybackGateResult,
   SubscriptionStatus,
 } from '../types/osmani'
 
@@ -22,7 +23,7 @@ export type CatalogOutletContext = {
   gateForPlayback: (
     channel: Pick<ChannelViewModel, 'accessType'> | null,
     reason?: string,
-  ) => Promise<boolean>
+  ) => Promise<PlaybackGateResult>
   requestEmergencyModal: () => void
 }
 

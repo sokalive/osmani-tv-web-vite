@@ -71,6 +71,7 @@ function asString(raw: unknown) {
 }
 
 function toProxyUrl(
+  proxyBaseUrl: string,
   url: string,
   headers: { origin: string; referer: string; userAgent: string },
 ) {
@@ -89,7 +90,7 @@ function toProxyUrl(
     params.set('ua', headers.userAgent)
   }
 
-  return `${env.streamProxyBaseUrl}?${params.toString()}`
+  return `${proxyBaseUrl}?${params.toString()}`
 }
 
 function resolveBackendPlaybackUrl(rawUrl: unknown) {
@@ -117,6 +118,127 @@ function resolveBackendPlaybackUrl(rawUrl: unknown) {
   }
 
   return new URL(value, adminBaseUrl).toString()
+}
+
+function resolveProxyBaseUrl(rawProxyBaseUrl: unknown) {
+  const value = asString(rawProxyBaseUrl)
+  if (!value) {
+    return env.streamProxyBaseUrl
+  }
+
+  return /^https?:\/\//i.test(value)
+    ? value.replace(/\/+$/, '')
+    : resolveBaseUrl(value).replace(/\/+$/, '')
+}
+
+function looksLikeUrlOrPath(value: string) {
+  return (
+    /^https?:\/\//i.test(value) ||
+    value.startsWith('/') ||
+    value.startsWith('./') ||
+    value.startsWith('../') ||
+    value.includes('?')
+  )
+}
+
+function looksLikeProxyEndpoint(value: string) {
+  return /(?:^|\/)(?:stream-proxy|stream_proxy)(?:$|[/?#])/i.test(value)
+}
+
+function isProxyDeliveryToken(value: string) {
+  const token = value.trim().toLowerCase()
+  return (
+    token === 'proxy' ||
+    token === 'stream-proxy' ||
+    token === 'stream_proxy' ||
+    token === 'proxy_delivery'
+  )
+}
+
+function isDirectDeliveryToken(value: string) {
+  const token = value.trim().toLowerCase()
+  return (
+    token === 'direct' ||
+    token === 'manifest' ||
+    token === 'backend' ||
+    token === 'canonical'
+  )
+}
+
+function buildCanonicalPlaybackUrl(
+  channel: Pick<
+    ChannelRow,
+    'deliveryPath' | 'streamProxy' | 'origin' | 'referer' | 'userAgent'
+  >,
+  sourceUrl: string,
+) {
+  const normalizedSourceUrl = asString(sourceUrl)
+  const resolvedSourceUrl = resolveBackendPlaybackUrl(normalizedSourceUrl)
+  if (!resolvedSourceUrl) {
+    return ''
+  }
+
+  const headers = {
+    origin: channel.origin,
+    referer: channel.referer,
+    userAgent: channel.userAgent,
+  }
+  const proxyBaseUrl = resolveProxyBaseUrl(channel.streamProxy)
+  const deliveryPath = asString(channel.deliveryPath)
+
+  if (!deliveryPath) {
+    return resolvedSourceUrl
+  }
+
+  if (isDirectDeliveryToken(deliveryPath)) {
+    return resolvedSourceUrl
+  }
+
+  if (isProxyDeliveryToken(deliveryPath)) {
+    return toProxyUrl(proxyBaseUrl, resolvedSourceUrl, headers)
+  }
+
+  if (!looksLikeUrlOrPath(deliveryPath)) {
+    return resolvedSourceUrl
+  }
+
+  const resolvedDeliveryUrl = /^https?:\/\//i.test(deliveryPath)
+    ? deliveryPath
+    : new URL(
+        deliveryPath.replace(/^\//, ''),
+        `${resolveProxyBaseUrl(channel.streamProxy || env.osmaniAdminApiUrl)}/`,
+      ).toString()
+
+  if (resolvedDeliveryUrl.includes('{url}')) {
+    return resolvedDeliveryUrl.replaceAll('{url}', encodeURIComponent(resolvedSourceUrl))
+  }
+
+  try {
+    const url = new URL(resolvedDeliveryUrl)
+    if (url.searchParams.has('url')) {
+      if (!url.searchParams.get('url')) {
+        url.searchParams.set('url', resolvedSourceUrl)
+      }
+      if (headers.referer && !url.searchParams.has('referer')) {
+        url.searchParams.set('referer', headers.referer)
+      }
+      if (headers.origin && !url.searchParams.has('origin')) {
+        url.searchParams.set('origin', headers.origin)
+      }
+      if (headers.userAgent && !url.searchParams.has('ua')) {
+        url.searchParams.set('ua', headers.userAgent)
+      }
+      return url.toString()
+    }
+  } catch {
+    return resolvedSourceUrl
+  }
+
+  if (looksLikeProxyEndpoint(resolvedDeliveryUrl)) {
+    return toProxyUrl(resolvedDeliveryUrl.replace(/\/+$/, ''), resolvedSourceUrl, headers)
+  }
+
+  return resolvedDeliveryUrl
 }
 
 export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
@@ -227,7 +349,7 @@ function createPlaybackCandidates(channel: ChannelRow) {
 
   if (canonicalSources.some((source) => source.url)) {
     return canonicalSources.reduce<PlaybackCandidate[]>((list, source) => {
-      const playbackUrl = resolveBackendPlaybackUrl(source.url)
+      const playbackUrl = buildCanonicalPlaybackUrl(channel, source.url)
       if (!playbackUrl) {
         return list
       }
@@ -252,6 +374,7 @@ function createPlaybackCandidates(channel: ChannelRow) {
     referer: channel.referer,
     userAgent: channel.userAgent,
   }
+  const compatibilityProxyBaseUrl = resolveProxyBaseUrl(channel.streamProxy)
 
   return [
     { id: 'primary', label: 'Primary', url: channel.url },
@@ -266,9 +389,9 @@ function createPlaybackCandidates(channel: ChannelRow) {
       id: source.id,
       label: source.label,
       sourceUrl: source.url,
-      playbackUrl: toProxyUrl(source.url, headers),
+      playbackUrl: toProxyUrl(compatibilityProxyBaseUrl, source.url, headers),
       deliveryPath: '',
-      streamProxy: env.streamProxyBaseUrl,
+      streamProxy: compatibilityProxyBaseUrl,
       usesBackendDelivery: false,
       isDirectManifest: directManifestPattern.test(source.url),
     })
@@ -316,7 +439,7 @@ function getPlaybackState(channel: ChannelRow, candidates: PlaybackCandidate[]) 
   return {
     readiness: 'ready' as PlaybackReadiness,
     message:
-      'This channel is routed through the production stream proxy for browser-safe HLS playback.',
+      'This channel is using the guarded compatibility playback fallback while canonical delivery fields are still missing.',
   }
 }
 

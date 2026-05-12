@@ -8,6 +8,11 @@ import {
 } from 'react'
 import { env } from '../../config/env'
 import { getSessionToken } from '../../services/auth/session'
+import {
+  getRealtimeDebugSnapshot,
+  subscribeRealtimeDebug,
+} from '../../services/realtimeSync'
+import type { UpdateRuntimeSnapshot } from '../../hooks/useUpdateRuntime'
 
 const TAP_WINDOW_MS = 2000
 const TAP_THRESHOLD = 7
@@ -22,6 +27,11 @@ type EndpointStatus = {
   body: unknown
   error: string | null
   fetchedAt: number
+}
+
+type OtaDebugOverlayProps = {
+  runtimeSnapshot?: UpdateRuntimeSnapshot | null
+  onForceRecheck?: () => void
 }
 
 function setOverlayVisible(next: boolean) {
@@ -93,48 +103,112 @@ function stringifyJson(value: unknown) {
   }
 }
 
-function getDebugSnapshot(visible: boolean, endpointStatus: EndpointStatus) {
+function normalizeInfo(
+  payload: Record<string, unknown> | null,
+  runtimeSnapshot: UpdateRuntimeSnapshot | null | undefined,
+) {
+  const runtimeInfo = runtimeSnapshot?.info
+
+  return {
+    source:
+      pickString(runtimeInfo?.source, payload?.source) || '',
+    apkUrl:
+      pickString(runtimeInfo?.apkUrl, payload?.apkUrl, payload?.apk_url) || '',
+    playStoreUrl:
+      pickString(
+        runtimeInfo?.playStoreUrl,
+        payload?.playStoreUrl,
+        payload?.play_store_url,
+        payload?.playstore_url,
+      ) || '',
+    apkSha256:
+      pickString(runtimeInfo?.apkSha256, payload?.apkSha256, payload?.apk_sha256) || '',
+    autoDownload:
+      runtimeInfo?.autoDownload === true ||
+      pickBoolean(payload?.autoDownload) ||
+      pickBoolean(payload?.auto_download),
+    latestVersionName:
+      pickString(
+        runtimeInfo?.latestVersionName,
+        payload?.latestVersionName,
+        payload?.latest_version_name,
+      ) || '',
+    latestVersionCode:
+      runtimeInfo?.latestVersionCode ??
+      payload?.latestVersionCode ??
+      payload?.latest_version_code ??
+      null,
+    installedVersionName:
+      pickString(runtimeInfo?.installedVersionName) || '',
+    installedVersionCode:
+      runtimeInfo?.installedVersionCode ?? null,
+    notice:
+      pickString(runtimeInfo?.notice, payload?.notice) || '',
+    releaseNotes:
+      pickString(runtimeInfo?.releaseNotes, payload?.releaseNotes, payload?.release_notes) || '',
+  }
+}
+
+function getDebugSnapshot(
+  visible: boolean,
+  endpointStatus: EndpointStatus,
+  runtimeSnapshot: UpdateRuntimeSnapshot | null | undefined,
+  realtimeSnapshot: ReturnType<typeof getRealtimeDebugSnapshot>,
+) {
   const root = asRecord(endpointStatus.body)
-  const info = asRecord(root?.info)
-  const sse = asRecord(root?.sse)
-  const overlayState = asRecord(root?.overlayState)
-  const native = asRecord(root?.native)
+  const backendInfo = asRecord(root?.latest_update_payload)
+  const latestClientCheck = asRecord(root?.latest_client_check)
+  const sseStatus = asRecord(root?.sse_status)
+  const currentSettings = asRecord(root?.current_settings)
+  const info = normalizeInfo(backendInfo, runtimeSnapshot)
 
   return {
     platform: 'web',
     nativeAvailable: false,
-    started: Boolean(endpointStatus.fetchedAt),
+    started: Boolean(runtimeSnapshot?.started),
     overlayVisible: visible,
-    decision: pickString(root?.decision) || '—',
+    decision:
+      pickString(runtimeSnapshot?.decision, root?.current_decision, root?.decision) || '—',
     info,
-    lastCheckAt: root?.lastCheckAt ?? endpointStatus.fetchedAt ?? 0,
-    lastUpdateInfoAt: root?.lastUpdateInfoAt ?? endpointStatus.fetchedAt ?? 0,
-    base: pickString(root?.base, env.osmaniAdminApiUrl) || '—',
-    lastCheckError: pickString(root?.lastCheckError, endpointStatus.error) || '',
+    lastCheckAt:
+      runtimeSnapshot?.lastCheckAt ??
+      latestClientCheck?.at ??
+      endpointStatus.fetchedAt ??
+      0,
+    lastUpdateInfoAt:
+      runtimeSnapshot?.lastUpdateInfoAt ??
+      latestClientCheck?.at ??
+      endpointStatus.fetchedAt ??
+      0,
+    base: pickString(runtimeSnapshot?.base, env.osmaniAdminApiUrl) || '—',
+    lastCheckError:
+      pickString(runtimeSnapshot?.lastCheckError, endpointStatus.error) || '',
     sse: {
-      connected: pickBoolean(sse?.connected),
-      url: pickString(sse?.url),
-      attemptIndex:
-        typeof sse?.attemptIndex === 'number' ? sse.attemptIndex : 0,
-      lastOpenAt: sse?.lastOpenAt ?? 0,
-      lastEventAt: sse?.lastEventAt ?? 0,
-      lastError: pickString(sse?.lastError),
+      connected: realtimeSnapshot.connected,
+      url: realtimeSnapshot.url,
+      attemptIndex: realtimeSnapshot.attemptIndex,
+      lastOpenAt: realtimeSnapshot.lastOpenAt,
+      lastEventAt: realtimeSnapshot.lastEventAt,
+      lastError: realtimeSnapshot.lastError,
+      activeClientsCount:
+        typeof sseStatus?.active_clients_count === 'number'
+          ? sseStatus.active_clients_count
+          : typeof root?.active_clients_count === 'number'
+            ? root.active_clients_count
+            : 0,
+      events: Array.isArray(sseStatus?.events) ? sseStatus.events : [],
     },
     overlayState: {
-      downloading: pickBoolean(overlayState?.downloading),
-      verifying: pickBoolean(overlayState?.verifying),
-      installing: pickBoolean(overlayState?.installing),
-      needsUnknownSourcesPermission: pickBoolean(
-        overlayState?.needsUnknownSourcesPermission,
-      ),
-      failedReason: pickString(overlayState?.failedReason),
-      progress: asRecord(overlayState?.progress),
+      downloading: runtimeSnapshot?.downloading === true,
+      verifying: runtimeSnapshot?.verifying === true,
+      installing: runtimeSnapshot?.installing === true,
+      needsUnknownSourcesPermission:
+        runtimeSnapshot?.needsUnknownSourcesPermission === true,
+      failedReason: pickString(runtimeSnapshot?.failedReason),
+      progress: runtimeSnapshot?.progress ?? null,
     },
-    native: {
-      state:
-        native?.state ??
-        'Native OTA module is Android-only; web overlay shows proxy/backend debug only.',
-    },
+    currentSettings,
+    latestClientCheck,
     endpointStatus,
   }
 }
@@ -264,7 +338,10 @@ function CloseIcon() {
   )
 }
 
-export function OtaDebugOverlay() {
+export function OtaDebugOverlay({
+  runtimeSnapshot = null,
+  onForceRecheck,
+}: OtaDebugOverlayProps) {
   const [visible, setVisible] = useState(false)
   const [endpointStatus, setEndpointStatus] = useState<EndpointStatus>({
     state: 'idle',
@@ -273,6 +350,9 @@ export function OtaDebugOverlay() {
     error: null,
     fetchedAt: 0,
   })
+  const [realtimeSnapshot, setRealtimeSnapshot] = useState(
+    getRealtimeDebugSnapshot(),
+  )
 
   useEffect(() => {
     if (!import.meta.env.DEV) {
@@ -280,6 +360,14 @@ export function OtaDebugOverlay() {
     }
 
     return subscribeVisibility(setVisible)
+  }, [])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      return
+    }
+
+    return subscribeRealtimeDebug(setRealtimeSnapshot)
   }, [])
 
   const fetchEndpoint = useCallback(async () => {
@@ -349,8 +437,8 @@ export function OtaDebugOverlay() {
   }, [fetchEndpoint, visible])
 
   const snapshot = useMemo(
-    () => getDebugSnapshot(visible, endpointStatus),
-    [endpointStatus, visible],
+    () => getDebugSnapshot(visible, endpointStatus, runtimeSnapshot, realtimeSnapshot),
+    [endpointStatus, realtimeSnapshot, runtimeSnapshot, visible],
   )
 
   const info = snapshot.info
@@ -457,6 +545,7 @@ export function OtaDebugOverlay() {
                 type="button"
                 className="ota-debug-overlay__btn"
                 onClick={() => {
+                  onForceRecheck?.()
                   void fetchEndpoint()
                 }}
               >
@@ -474,6 +563,18 @@ export function OtaDebugOverlay() {
               <Row label="attemptIndex" value={String(snapshot.sse.attemptIndex)} />
               <Row label="lastOpenAt" value={formatTimestamp(snapshot.sse.lastOpenAt)} />
               <Row label="lastEventAt" value={formatTimestamp(snapshot.sse.lastEventAt)} />
+              <Row
+                label="backend_active_clients"
+                value={String(snapshot.sse.activeClientsCount ?? 0)}
+              />
+              <Row
+                label="backend_events"
+                value={
+                  Array.isArray(snapshot.sse.events) && snapshot.sse.events.length
+                    ? snapshot.sse.events.join(', ')
+                    : '—'
+                }
+              />
               <Row
                 label="lastError"
                 value={snapshot.sse.lastError || '—'}
@@ -510,6 +611,26 @@ export function OtaDebugOverlay() {
               />
             </Section>
 
+            <Section title="Backend snapshot">
+              <Row
+                label="current_decision"
+                value={pickString(snapshot.endpointStatus.body && asRecord(snapshot.endpointStatus.body)?.current_decision) || '—'}
+              />
+              <Row
+                label="latest_client_check"
+                value={formatTimestamp(snapshot.latestClientCheck?.at)}
+              />
+              <Row
+                label="server_time"
+                value={formatTimestamp(asRecord(snapshot.endpointStatus.body)?.server_time)}
+              />
+              <pre className="ota-debug-overlay__code">
+                {snapshot.currentSettings
+                  ? stringifyJson(snapshot.currentSettings)
+                  : '(no current_settings yet)'}
+              </pre>
+            </Section>
+
             <Section
               title={`/api/update-debug — ${snapshot.endpointStatus.httpStatus ?? snapshot.endpointStatus.state}`}
             >
@@ -539,15 +660,9 @@ export function OtaDebugOverlay() {
               </pre>
             </Section>
 
-            <Section title="Latest backend response (mobile)">
+            <Section title="Latest backend update payload">
               <pre className="ota-debug-overlay__code">
                 {info ? stringifyJson(info) : '(no payload yet)'}
-              </pre>
-            </Section>
-
-            <Section title="Native state">
-              <pre className="ota-debug-overlay__code">
-                {stringifyJson(snapshot.native?.state)}
               </pre>
             </Section>
 

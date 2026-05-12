@@ -9,6 +9,7 @@ import { ManualSubscriptionGiftModal } from '../components/modals/ManualSubscrip
 import { OtaDebugOverlay } from '../components/modals/OtaDebugOverlay'
 import { PopupSettingsModal } from '../components/modals/PopupSettingsModal'
 import { SubscriptionExpiryReminderModal } from '../components/modals/SubscriptionExpiryReminderModal'
+import { UpdateOverlay } from '../components/modals/UpdateOverlay'
 import {
   TransferredAwayModal,
   type TransferredAwayReason,
@@ -32,7 +33,12 @@ import {
 } from '../services/api/subscriptionService'
 import { getDeviceIdentity } from '../services/auth/deviceIdentity'
 import { computeSubscriptionProgress } from '../lib/subscriptionMath'
-import type { ChannelViewModel, SubscriptionStatus } from '../types/osmani'
+import { useUpdateRuntime } from '../hooks/useUpdateRuntime'
+import type {
+  ChannelViewModel,
+  PlaybackGateResult,
+  SubscriptionStatus,
+} from '../types/osmani'
 
 const MANUAL_GIFT_ACK_STORAGE_KEY = 'osmani:manual_gift_ack_key'
 const SUBSCRIPTION_EXPIRY_REMINDER_STORAGE_KEY = 'osmani:expiry_reminder_dismissed_key'
@@ -76,6 +82,62 @@ function hasSubscriptionHistory(subscription: {
         subscription.planDurationDays > 0
       ),
   )
+}
+
+function pickSourceDeviceId(payload: unknown) {
+  if (!payload || typeof payload !== 'object') {
+    return ''
+  }
+
+  const body = payload as Record<string, unknown>
+  const sourceDevice = body.source_device
+
+  return pickString(
+    body.source_device_id,
+    body.sourceDeviceId,
+    typeof sourceDevice === 'object' && sourceDevice
+      ? (sourceDevice as Record<string, unknown>).device_id
+      : null,
+    typeof sourceDevice === 'object' && sourceDevice
+      ? (sourceDevice as Record<string, unknown>).id
+      : null,
+  )
+}
+
+function mapPlaybackGateReasonToBlockedReason(reason: string | null | undefined) {
+  const normalized = String(reason || '')
+    .trim()
+    .toLowerCase()
+
+  if (!normalized) {
+    return null
+  }
+
+  if (
+    normalized.includes('transfer') ||
+    normalized.includes('moved') ||
+    normalized.includes('other_device')
+  ) {
+    return 'transferred' as const
+  }
+
+  if (
+    normalized.includes('revoke') ||
+    normalized.includes('blocked') ||
+    normalized.includes('suspend')
+  ) {
+    return 'revoked' as const
+  }
+
+  if (
+    normalized.includes('expire') ||
+    normalized.includes('expired') ||
+    normalized.includes('ended')
+  ) {
+    return 'expired' as const
+  }
+
+  return null
 }
 
 function normalizeTransferConfirmEvent(payload: unknown): TransferConfirmEvent | null {
@@ -176,6 +238,7 @@ export function AppShell() {
   const [blockedPaused, setBlockedPaused] = useState(false)
   const [blockedRecovering, setBlockedRecovering] = useState(false)
   const isSubscribed = subscription?.active === true
+  const updateRuntime = useUpdateRuntime()
 
   const refreshSubscription = useCallback(
     async (
@@ -191,6 +254,9 @@ export function AppShell() {
         }
 
         const next = await verifySubscription(deviceId, deviceFingerprint)
+        const runtimeBlockedReason = mapPlaybackGateReasonToBlockedReason(
+          next.playbackGateReason,
+        )
         setSubscription(next)
         setSubscriptionVersion((current) => current + 1)
 
@@ -199,6 +265,10 @@ export function AppShell() {
           setBlockedReason(null)
           setBlockedPaused(false)
           setBlockedRecovering(false)
+        } else if (runtimeBlockedReason) {
+          setBlockedReason(runtimeBlockedReason)
+        } else if (next.playbackGateReason) {
+          setBlockedReason(null)
         } else if (hasSubscriptionHistory(next)) {
           const expiresMs = parseMs(next.expiresAt)
           setBlockedReason(
@@ -228,17 +298,20 @@ export function AppShell() {
     async (
       channel: Pick<ChannelViewModel, 'accessType'> | null,
       reason = 'playback',
-    ) => {
+    ): Promise<PlaybackGateResult> => {
       if (catalog.data?.settings.freeMode) {
-        return true
+        return { allowed: true, reason: null }
       }
 
       if (!channel || channel.accessType !== 'premium') {
-        return true
+        return { allowed: true, reason: null }
       }
 
       const next = await refreshSubscription(`gate:${reason}`)
-      return next?.active === true
+      return {
+        allowed: next?.active === true,
+        reason: next?.playbackGateReason ?? null,
+      }
     },
     [catalog.data?.settings.freeMode, refreshSubscription],
   )
@@ -434,7 +507,16 @@ export function AppShell() {
   }, [blockedPaused, location.pathname])
 
   useEffect(() => {
-    const openTransferConfirm = (payload: unknown) => {
+    const openTransferConfirm = async (payload: unknown) => {
+      const sourceDeviceId = pickSourceDeviceId(payload)
+      if (sourceDeviceId) {
+        const identity = await getDeviceIdentity().catch(() => null)
+        const currentDeviceId = identity?.deviceId || ''
+        if (currentDeviceId && currentDeviceId !== sourceDeviceId) {
+          return
+        }
+      }
+
       const nextEvent = normalizeTransferConfirmEvent(payload)
       if (nextEvent) {
         setTransferConfirmEvent(nextEvent)
@@ -446,8 +528,12 @@ export function AppShell() {
     }
 
     const subscriptions = [
-      subscribeRealtimeEvent('transfer_requested', openTransferConfirm),
-      subscribeRealtimeEvent('transfer_confirmation_required', openTransferConfirm),
+      subscribeRealtimeEvent('transfer_requested', (payload) => {
+        void openTransferConfirm(payload)
+      }),
+      subscribeRealtimeEvent('transfer_confirmation_required', (payload) => {
+        void openTransferConfirm(payload)
+      }),
       subscribeRealtimeEvent('transfer_approved', () => {
         clearTransferConfirm()
         void refreshSubscription('sse:transfer-approved')
@@ -588,7 +674,26 @@ export function AppShell() {
         onRecover={handleRecoverFromBlockedState}
         recovering={blockedRecovering}
       />
-      <OtaDebugOverlay />
+      <UpdateOverlay
+        visible={updateRuntime.state.visible}
+        decision={updateRuntime.state.decision}
+        info={updateRuntime.state.info}
+        action={updateRuntime.state.action}
+        downloading={updateRuntime.state.downloading}
+        verifying={updateRuntime.state.verifying}
+        installing={updateRuntime.state.installing}
+        needsUnknownSourcesPermission={updateRuntime.state.needsUnknownSourcesPermission}
+        failedReason={updateRuntime.state.failedReason}
+        progress={updateRuntime.state.progress}
+        onPrimary={updateRuntime.triggerPrimaryAction}
+        onCancel={updateRuntime.dismiss}
+      />
+      <OtaDebugOverlay
+        runtimeSnapshot={updateRuntime.state}
+        onForceRecheck={() => {
+          void updateRuntime.forceRecheck()
+        }}
+      />
     </div>
   )
 }

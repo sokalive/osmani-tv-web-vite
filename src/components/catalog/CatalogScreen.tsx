@@ -82,7 +82,6 @@ export function CatalogScreen({
     error,
     selectChannel,
     reload,
-    isSubscribed,
     gateForPlayback,
     requestEmergencyModal,
   } = useCatalogOutlet()
@@ -120,14 +119,14 @@ export function CatalogScreen({
       return
     }
 
-    if (!freeMode && channel.accessType === 'premium' && !isSubscribed) {
-      navigate('/account', { state: { openPremiumModal: true } })
-      return
-    }
-
-    const allowed = await gateForPlayback(channel, `catalog:${channel.id}`)
-    if (!allowed) {
-      return
+    if (!freeMode && channel.accessType === 'premium') {
+      const gate = await gateForPlayback(channel, `catalog:${channel.id}`)
+      if (!gate.allowed) {
+        if (!gate.reason) {
+          navigate('/account', { state: { openPremiumModal: true } })
+        }
+        return
+      }
     }
 
     selectChannel(channel)

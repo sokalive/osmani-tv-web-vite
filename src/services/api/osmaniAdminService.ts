@@ -22,6 +22,58 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value)
 }
 
+function pickBoolean(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === 'boolean') {
+      return value
+    }
+    if (typeof value === 'number') {
+      return value !== 0
+    }
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase()
+      if (['true', '1', 'yes', 'on', 'enabled', 'active'].includes(normalized)) {
+        return true
+      }
+      if (['false', '0', 'no', 'off', 'disabled', 'inactive'].includes(normalized)) {
+        return false
+      }
+    }
+  }
+
+  return false
+}
+
+function normalizeAppSettings(payload: unknown): AppModeSettings {
+  const body = isPlainObject(payload) ? payload : {}
+  const appModes = isPlainObject(body.app_modes)
+    ? body.app_modes
+    : isPlainObject(body.appModes)
+      ? body.appModes
+      : null
+
+  return {
+    freeMode: pickBoolean(
+      appModes?.free_mode,
+      appModes?.freeMode,
+      body.free_mode,
+      body.freeMode,
+    ),
+    emergencyMode: pickBoolean(
+      appModes?.emergency_mode,
+      appModes?.emergencyMode,
+      body.emergency_mode,
+      body.emergencyMode,
+    ),
+    maintenanceMode: pickBoolean(
+      appModes?.maintenance_mode,
+      appModes?.maintenanceMode,
+      body.maintenance_mode,
+      body.maintenanceMode,
+    ),
+  }
+}
+
 export async function fetchServerHealth() {
   try {
     const payload = await osmaniAdminClient.get<unknown>('/api/server-health')
@@ -89,7 +141,8 @@ export async function fetchCategories(channels?: ChannelViewModel[]) {
 }
 
 export async function fetchAppSettings() {
-  return osmaniAdminClient.get<AppModeSettings>(env.settingsPath)
+  const payload = await osmaniAdminClient.get<unknown>(env.settingsPath)
+  return normalizeAppSettings(payload)
 }
 
 export async function fetchBanners() {

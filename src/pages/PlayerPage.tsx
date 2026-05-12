@@ -495,14 +495,18 @@ export function PlayerPage() {
 
     setAccessChecking(true)
     setAccessDenied(false)
-    void gateForPlayback(channel, `player:${channel.id}`).then((allowed) => {
+    void gateForPlayback(channel, `player:${channel.id}`).then((gate) => {
       if (cancelled) {
         return
       }
       setAccessChecking(false)
-      setAccessDenied(!allowed)
-      if (!allowed) {
+      setAccessDenied(!gate.allowed)
+      if (!gate.allowed) {
         void exitImmersivePlayback().finally(() => {
+          if (gate.reason) {
+            navigate('/')
+            return
+          }
           navigate('/account', { state: { openPremiumModal: true } })
         })
       }

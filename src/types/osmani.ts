@@ -4,6 +4,13 @@ export type AppModeSettings = {
   maintenanceMode: boolean
 }
 
+export type PlaybackGateReason = string
+
+export type PlaybackGateResult = {
+  allowed: boolean
+  reason: PlaybackGateReason | null
+}
+
 export type BannerRecord = {
   id: number
   title: string
@@ -62,6 +69,7 @@ export type SubscriptionStatus = {
   plans: SubscriptionPlan[]
   deviceId: string | null
   manualGiftAckKey: string | null
+  playbackGateReason: PlaybackGateReason | null
   raw: unknown
 }
 

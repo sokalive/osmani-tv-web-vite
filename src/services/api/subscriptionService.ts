@@ -1,5 +1,6 @@
 import type {
   PaymentProvider,
+  PlaybackGateReason,
   SubscriptionPlan,
   SubscriptionStatus,
 } from '../../types/osmani'
@@ -233,6 +234,29 @@ function pickPlan(body: PlainObject) {
   return null
 }
 
+function pickPlaybackGateReason(body: PlainObject): PlaybackGateReason | null {
+  const data = isPlainObject(body.data) ? body.data : null
+  const subscription = isPlainObject(body.subscription) ? body.subscription : null
+  const dataSubscription = pickDataSubscription(body)
+
+  return (
+    pickString(
+      body.playbackGateReason,
+      body.playback_gate_reason,
+      body.gateReason,
+      data?.playbackGateReason,
+      data?.playback_gate_reason,
+      data?.gateReason,
+      subscription?.playbackGateReason,
+      subscription?.playback_gate_reason,
+      subscription?.gateReason,
+      dataSubscription?.playbackGateReason,
+      dataSubscription?.playback_gate_reason,
+      dataSubscription?.gateReason,
+    ) || null
+  )
+}
+
 function pickAmount(body: PlainObject) {
   const data = isPlainObject(body.data) ? body.data : null
   const subscription = isPlainObject(body.subscription) ? body.subscription : null
@@ -339,6 +363,7 @@ function normalizeVerifyResponse(payload: unknown): SubscriptionStatus {
       plans: [],
       deviceId: null,
       manualGiftAckKey: null,
+      playbackGateReason: null,
       raw: payload,
     }
   }
@@ -404,6 +429,7 @@ function normalizeVerifyResponse(payload: unknown): SubscriptionStatus {
         payment?.manualGiftAckKey,
         payment?.manual_gift_ack_key,
       ) || null,
+    playbackGateReason: pickPlaybackGateReason(payload),
     raw: payload,
   }
 }
@@ -651,15 +677,15 @@ export async function getTransferStatus(code: string) {
   }
 
   const prefixed = withTransferPrefix(trimmed)
-  const paths = [
+  const canonicalPaths = [
     `/api/transfer/status/${encodeURIComponent(prefixed)}`,
     `/api/transfer/status?code=${encodeURIComponent(prefixed)}`,
+  ]
+  const compatibilityFallbackPaths = [
     `/api/transfer/${encodeURIComponent(prefixed)}`,
     `/api/transfer/poll/${encodeURIComponent(prefixed)}`,
-    `/api/transfer/info/${encodeURIComponent(prefixed)}`,
-    `/api/subscription/transfer/${encodeURIComponent(prefixed)}`,
-    `/api/subscription/transfer/status/${encodeURIComponent(prefixed)}`,
   ]
+  const paths = [...canonicalPaths, ...compatibilityFallbackPaths]
 
   for (const path of paths) {
     try {
