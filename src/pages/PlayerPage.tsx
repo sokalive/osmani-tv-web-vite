@@ -8,6 +8,7 @@ import {
   startLiveSession,
   stopLiveSession,
 } from '../services/analytics'
+import { clearActiveChannel, setActiveChannel } from '../services/presenceTracker'
 
 function PlayerActionIcon({
   kind,
@@ -483,30 +484,123 @@ export function PlayerPage() {
       return
     }
 
+    const channelId = channel.id || channel.name
+    const channelName = channel.name
+    setActiveChannel(channelId, channelName)
+
+    return () => {
+      clearActiveChannel()
+    }
+  }, [accessChecking, accessDenied, channel])
+
+  useEffect(() => {
+    if (!channel || accessChecking || accessDenied) {
+      return
+    }
+
     let cancelled = false
+    let sessionActive = false
     const channelId = channel.id || channel.name
     const channelName = channel.name
 
-    void startLiveSession(channelId, channelName).then((deviceId) => {
-      if (cancelled) {
-        return
-      }
-
-      sessionDeviceIdRef.current = deviceId
-      heartbeatRef.current = window.setInterval(() => {
-        void pingLiveSession(deviceId, channelId)
-      }, PING_MS)
-    })
-
-    return () => {
-      cancelled = true
+    const stopSession = () => {
       if (heartbeatRef.current != null) {
         window.clearInterval(heartbeatRef.current)
         heartbeatRef.current = null
       }
+
       const deviceId = sessionDeviceIdRef.current
       sessionDeviceIdRef.current = ''
+      if (!deviceId) {
+        sessionActive = false
+        return
+      }
+
+      sessionActive = false
       void stopLiveSession(deviceId, channelId)
+    }
+
+    const startSession = () => {
+      if (cancelled || sessionActive) {
+        return
+      }
+
+      sessionActive = true
+
+      void startLiveSession(channelId, channelName).then((deviceId) => {
+        if (cancelled || !sessionActive) {
+          if (deviceId) {
+            void stopLiveSession(deviceId, channelId)
+          }
+          return
+        }
+
+        sessionDeviceIdRef.current = deviceId
+        heartbeatRef.current = window.setInterval(() => {
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') {
+            return
+          }
+
+          void pingLiveSession(deviceId, channelId)
+        }, PING_MS)
+      })
+    }
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        if (!sessionActive) {
+          startSession()
+          return
+        }
+
+        if (sessionDeviceIdRef.current) {
+          void pingLiveSession(sessionDeviceIdRef.current, channelId)
+        }
+        return
+      }
+
+      if (document.visibilityState === 'hidden') {
+        stopSession()
+      }
+    }
+
+    const onPageShow = () => {
+      if (!sessionActive) {
+        startSession()
+        return
+      }
+
+      if (sessionDeviceIdRef.current) {
+        void pingLiveSession(sessionDeviceIdRef.current, channelId)
+      }
+    }
+
+    const onPageHide = () => {
+      stopSession()
+    }
+
+    if (typeof document === 'undefined' || document.visibilityState !== 'hidden') {
+      startSession()
+    }
+
+    if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onVisibilityChange)
+      window.addEventListener('pageshow', onPageShow)
+      window.addEventListener('pagehide', onPageHide)
+      window.addEventListener('beforeunload', onPageHide)
+    }
+
+    return () => {
+      cancelled = true
+
+      if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onVisibilityChange)
+        window.removeEventListener('pageshow', onPageShow)
+        window.removeEventListener('pagehide', onPageHide)
+        window.removeEventListener('beforeunload', onPageHide)
+      }
+
+      stopSession()
     }
   }, [accessChecking, accessDenied, channel])
 

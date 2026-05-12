@@ -23,6 +23,8 @@ import {
   stopRealtimeSync,
   subscribeRealtimeEvent,
 } from '../services/realtimeSync'
+import { trackInstallOnce } from '../services/analytics'
+import { startPresence, stopPresence } from '../services/presenceTracker'
 import {
   acknowledgeManualGift,
   recoverSubscription,
@@ -273,8 +275,11 @@ export function AppShell() {
   )
 
   useEffect(() => {
+    void trackInstallOnce()
+    void startPresence()
     startRealtimeSync()
     return () => {
+      void stopPresence()
       stopRealtimeSync()
     }
   }, [])
