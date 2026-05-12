@@ -929,14 +929,14 @@ svg {
   padding: 0;
   pointer-events: none;
   opacity: 0;
-  transition: opacity 220ms ease;
+  transition: opacity 180ms ease;
   background:
     linear-gradient(
       180deg,
-      rgba(0, 0, 0, 0.54) 0%,
+      rgba(0, 0, 0, 0.58) 0%,
       transparent 22%,
       transparent 70%,
-      rgba(0, 0, 0, 0.62) 100%
+      rgba(0, 0, 0, 0.7) 100%
     );
 }
 
@@ -946,6 +946,38 @@ svg {
 
 .player-screen__overlay > * {
   pointer-events: auto;
+}
+
+.player-screen__topbar,
+.player-screen__center-state,
+.player-screen__bottom-actions {
+  opacity: 0;
+  transition:
+    opacity 180ms ease,
+    transform 220ms ease;
+}
+
+.player-screen__topbar {
+  transform: translateY(-10px);
+}
+
+.player-screen__center-state {
+  transform: translate(-50%, -50%) scale(0.96);
+}
+
+.player-screen__bottom-actions {
+  transform: translateY(10px);
+}
+
+.player-screen__overlay--visible .player-screen__topbar,
+.player-screen__overlay--visible .player-screen__center-state,
+.player-screen__overlay--visible .player-screen__bottom-actions {
+  opacity: 1;
+  transform: none;
+}
+
+.player-screen__overlay--visible .player-screen__center-state {
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .player-screen__topbar {
@@ -979,6 +1011,58 @@ svg {
   stroke-linejoin: round;
 }
 
+.player-screen__gate-state {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(100% - 32px), 320px);
+  padding: 18px 16px;
+  border-radius: 14px;
+  background: rgba(9, 12, 18, 0.45);
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
+.player-screen__gate-state strong {
+  display: block;
+  margin-bottom: 8px;
+  color: #e5e7eb;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.player-screen__gate-state p {
+  margin: 0;
+  color: #d1d5db;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.player-screen__gate-state--locked {
+  background: rgba(19, 17, 24, 0.72);
+  border: 1px solid rgba(255, 203, 61, 0.22);
+}
+
+.player-screen__gate-icon {
+  width: 28px;
+  height: 28px;
+  margin: 0 auto 10px;
+  color: #ffcb3d;
+  display: grid;
+  place-items: center;
+}
+
+.player-screen__gate-icon svg {
+  width: 24px;
+  height: 24px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .player-screen__title-wrap {
   flex: 1;
   min-width: 0;
@@ -1004,6 +1088,7 @@ svg {
   background: #b91c1c;
   font-size: 0.76rem;
   font-weight: 700;
+  color: #ffffff;
 }
 
 .player-screen__center-state {
@@ -1097,6 +1182,15 @@ svg {
   stroke-linejoin: round;
 }
 
+.player-action__label {
+  display: block;
+  max-width: 100%;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .player-picker {
   position: absolute;
   inset: 0;
@@ -1170,7 +1264,7 @@ svg {
   padding: 12px 16px;
   border-radius: 0;
   display: flex;
-  justify-content: flex-start;
+  justify-content: space-between;
   align-items: center;
   gap: 10px;
   background: transparent;
@@ -1192,6 +1286,25 @@ svg {
 .player-picker__row--active span {
   color: #a7f3d0;
   font-weight: 700;
+}
+
+.player-picker__check {
+  width: 18px;
+  height: 18px;
+  color: #1ec967;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.player-picker__check svg {
+  width: 18px;
+  height: 18px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .player-picker__empty {

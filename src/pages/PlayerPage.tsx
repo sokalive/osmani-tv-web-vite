@@ -9,12 +9,69 @@ import {
   stopLiveSession,
 } from '../services/analytics'
 
-function PlayerActionIcon({ kind }: { kind: 'play' | 'language' | 'quality' | 'fill' | 'fullscreen' }) {
+function PlayerActionIcon({
+  kind,
+}: {
+  kind:
+    | 'play'
+    | 'pause'
+    | 'language'
+    | 'quality'
+    | 'fill'
+    | 'fill-off'
+    | 'fullscreen'
+    | 'back'
+    | 'close'
+    | 'lock'
+    | 'check'
+}) {
+  if (kind === 'back') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M14.5 6 8.5 12l6 6" />
+      </svg>
+    )
+  }
+
+  if (kind === 'close') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 7l10 10M17 7 7 17" />
+      </svg>
+    )
+  }
+
+  if (kind === 'lock') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="6" y="11" width="12" height="9" rx="2.5" />
+        <path d="M9 11V8.5A3 3 0 0 1 12 5.5a3 3 0 0 1 3 3V11" />
+      </svg>
+    )
+  }
+
+  if (kind === 'check') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m5 12 4.2 4.2L19 6.8" />
+      </svg>
+    )
+  }
+
+  if (kind === 'pause') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M9 6.5v11M15 6.5v11" />
+      </svg>
+    )
+  }
+
   if (kind === 'language') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 7h10M5 12h7M5 17h10" />
-        <path d="M17 8l3 3-3 3" />
+        <path d="M4.5 12h7M8 7.5h6.5M6.5 16.5h3" />
+        <path d="M15.5 6.5c1 4 2.6 7.4 5 10.5" />
+        <path d="M18 6.5c-.6 3.4-2.1 6.6-4.5 9.5" />
       </svg>
     )
   }
@@ -22,8 +79,9 @@ function PlayerActionIcon({ kind }: { kind: 'play' | 'language' | 'quality' | 'f
   if (kind === 'quality') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="4" y="6" width="16" height="12" rx="3" />
-        <path d="M9 15 11.5 11.5 14 13.8 16 10.8" />
+        <path d="M5 15a7 7 0 1 1 14 0" />
+        <path d="M12 15l3.8-3.4" />
+        <circle cx="12" cy="15" r="1.2" fill="currentColor" stroke="none" />
       </svg>
     )
   }
@@ -31,7 +89,15 @@ function PlayerActionIcon({ kind }: { kind: 'play' | 'language' | 'quality' | 'f
   if (kind === 'fill') {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M8 5H5v3M16 5h3v3M8 19H5v-3M16 19h3v-3" />
+        <path d="M9 5H5v4M15 5h4v4M9 19H5v-4M15 19h4v-4" />
+      </svg>
+    )
+  }
+
+  if (kind === 'fill-off') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 8H5V5M16 8h3V5M8 16H5v3M16 16h3v3" />
       </svg>
     )
   }
@@ -52,11 +118,7 @@ function PlayerActionIcon({ kind }: { kind: 'play' | 'language' | 'quality' | 'f
 }
 
 function CloseIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7 7l10 10M17 7 7 17" />
-    </svg>
-  )
+  return <PlayerActionIcon kind="close" />
 }
 
 type FullscreenCapableDocument = Document & {
@@ -104,12 +166,13 @@ export function PlayerPage() {
   const [retryToken, setRetryToken] = useState(0)
   const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain')
   const [pickerKind, setPickerKind] = useState<'language' | 'quality' | null>(null)
-  const [controlsPinned, setControlsPinned] = useState(true)
+  const [overlayVisible, setOverlayVisible] = useState(true)
   const [accessChecking, setAccessChecking] = useState(false)
   const [accessDenied, setAccessDenied] = useState(false)
   const [immersiveActive, setImmersiveActive] = useState(() => Boolean(getFullscreenElement()))
   const sessionDeviceIdRef = useRef('')
   const heartbeatRef = useRef<number | null>(null)
+  const hideControlsTimerRef = useRef<number | null>(null)
   const surfaceRef = useRef<HTMLDivElement | null>(null)
   const autoImmersiveAttemptRef = useRef(false)
   const playStartedImmersiveRetryRef = useRef(false)
@@ -191,8 +254,12 @@ export function PlayerPage() {
   const selectedLanguageLabel =
     languageOptions.find((option) => option.selected)?.label || 'Lugha'
 
-  const controlsVisible = controlsPinned || Boolean(pickerKind) || status !== 'playing'
-  const showCenterState = status !== 'playing'
+  const controlsVisible = overlayVisible
+  const showCenterState =
+    status === 'loading' ||
+    status === 'buffering' ||
+    status === 'awaiting-user' ||
+    status === 'error'
   const centerTitle =
     status === 'error'
       ? 'Hitilafu ya uchezi'
@@ -205,6 +272,31 @@ export function PlayerPage() {
       : status === 'buffering'
         ? 'Inabuffer stream ya moja kwa moja...'
         : channel?.playbackMessage
+
+  const clearHideControlsTimer = useCallback(() => {
+    if (hideControlsTimerRef.current != null) {
+      window.clearTimeout(hideControlsTimerRef.current)
+      hideControlsTimerRef.current = null
+    }
+  }, [])
+
+  const startHideControlsTimer = useCallback(() => {
+    clearHideControlsTimer()
+    hideControlsTimerRef.current = window.setTimeout(() => {
+      setOverlayVisible(false)
+    }, 3000)
+  }, [clearHideControlsTimer])
+
+  const showControls = useCallback(() => {
+    setOverlayVisible(true)
+
+    if (pickerKind || status !== 'playing') {
+      clearHideControlsTimer()
+      return
+    }
+
+    startHideControlsTimer()
+  }, [clearHideControlsTimer, pickerKind, startHideControlsTimer, status])
 
   const lockLandscape = useCallback(async () => {
     if (typeof window === 'undefined') {
@@ -242,7 +334,7 @@ export function PlayerPage() {
     }
 
     setImmersiveActive(true)
-    setControlsPinned(true)
+    setOverlayVisible(true)
     await lockLandscape()
     return true
   }, [lockLandscape, requestFullscreen])
@@ -330,8 +422,9 @@ export function PlayerPage() {
   useEffect(() => {
     autoImmersiveAttemptRef.current = false
     playStartedImmersiveRetryRef.current = false
-    setControlsPinned(true)
-  }, [channel?.id, playbackSrc])
+    clearHideControlsTimer()
+    setOverlayVisible(true)
+  }, [channel?.id, clearHideControlsTimer, playbackSrc])
 
   useEffect(() => {
     let cancelled = false
@@ -418,15 +511,20 @@ export function PlayerPage() {
   }, [accessChecking, accessDenied, channel])
 
   useEffect(() => {
+    clearHideControlsTimer()
+
     if (pickerKind || status !== 'playing') {
+      setOverlayVisible(true)
       return
     }
 
-    const timer = window.setTimeout(() => setControlsPinned(false), 3500)
+    setOverlayVisible(true)
+    startHideControlsTimer()
+
     return () => {
-      window.clearTimeout(timer)
+      clearHideControlsTimer()
     }
-  }, [pickerKind, status])
+  }, [clearHideControlsTimer, pickerKind, startHideControlsTimer, status])
 
   useEffect(() => {
     if (!channel || accessChecking || accessDenied || !playbackSrc) {
@@ -475,9 +573,10 @@ export function PlayerPage() {
 
   useEffect(
     () => () => {
+      clearHideControlsTimer()
       void exitImmersivePlayback()
     },
-    [exitImmersivePlayback],
+    [clearHideControlsTimer, exitImmersivePlayback],
   )
 
   if (!channel) {
@@ -499,16 +598,30 @@ export function PlayerPage() {
 
   if (accessChecking) {
     return (
-      <section className="player-screen player-screen--empty">
-        <p className="player-screen__empty-text">Inathibitisha kifurushi...</p>
+      <section className="player-screen">
+        <div className="player-screen__surface">
+          <div className="player-screen__gate-state">
+            <span className="player-screen__status-spinner" aria-hidden="true" />
+            <strong>Inathibitisha kifurushi...</strong>
+            <p>Inafuata kanuni za premium kabla ya kufungua player.</p>
+          </div>
+        </div>
       </section>
     )
   }
 
   if (accessDenied) {
     return (
-      <section className="player-screen player-screen--empty">
-        <p className="player-screen__empty-text">Hauna kifurushi hai.</p>
+      <section className="player-screen">
+        <div className="player-screen__surface">
+          <div className="player-screen__gate-state player-screen__gate-state--locked">
+            <span className="player-screen__gate-icon" aria-hidden="true">
+              <PlayerActionIcon kind="lock" />
+            </span>
+            <strong>Hauna kifurushi hai</strong>
+            <p>Fungua kifurushi chako ili kuendelea kutazama channel hii.</p>
+          </div>
+        </div>
       </section>
     )
   }
@@ -523,7 +636,7 @@ export function PlayerPage() {
             void enterImmersivePlayback()
           }
           if (!pickerKind) {
-            setControlsPinned((current) => (controlsVisible ? !current : true))
+            showControls()
           }
         }}
       >
@@ -548,9 +661,7 @@ export function PlayerPage() {
               }}
               aria-label="Back"
             >
-              <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M14.5 6 8.5 12l6 6" />
-              </svg>
+              <PlayerActionIcon kind="back" />
             </button>
 
             <div className="player-screen__title-wrap">
@@ -591,6 +702,7 @@ export function PlayerPage() {
               type="button"
               className="player-action"
               onClick={() => {
+                showControls()
                 if (status !== 'playing') {
                   void play()
                   void enterImmersivePlayback()
@@ -601,53 +713,63 @@ export function PlayerPage() {
               }}
             >
               <span className="player-action__icon">
-                <PlayerActionIcon kind="play" />
+                <PlayerActionIcon kind={status === 'playing' ? 'pause' : 'play'} />
               </span>
-              {status === 'playing' ? 'Pause' : 'Play'}
-            </button>
-            <button
-              type="button"
-              className="player-action"
-              onClick={() => setPickerKind('language')}
-            >
-              <span className="player-action__icon">
-                <PlayerActionIcon kind="language" />
+              <span className="player-action__label">
+                {status === 'playing' ? 'Pause' : 'Play'}
               </span>
-              {selectedLanguageLabel}
-            </button>
-            <button
-              type="button"
-              className="player-action"
-              onClick={() => setPickerKind('quality')}
-            >
-              <span className="player-action__icon">
-                <PlayerActionIcon kind="quality" />
-              </span>
-              {selectedQualityLabel}
-            </button>
-            <button
-              type="button"
-              className="player-action"
-              onClick={() =>
-                setFitMode((value) => (value === 'contain' ? 'cover' : 'contain'))
-              }
-            >
-              <span className="player-action__icon">
-                <PlayerActionIcon kind="fill" />
-              </span>
-              Fill
             </button>
             <button
               type="button"
               className="player-action"
               onClick={() => {
+                showControls()
+                setPickerKind('language')
+              }}
+            >
+              <span className="player-action__icon">
+                <PlayerActionIcon kind="language" />
+              </span>
+              <span className="player-action__label">{selectedLanguageLabel}</span>
+            </button>
+            <button
+              type="button"
+              className="player-action"
+              onClick={() => {
+                showControls()
+                setPickerKind('quality')
+              }}
+            >
+              <span className="player-action__icon">
+                <PlayerActionIcon kind="quality" />
+              </span>
+              <span className="player-action__label">{selectedQualityLabel}</span>
+            </button>
+            <button
+              type="button"
+              className="player-action"
+              onClick={() => {
+                showControls()
+                setFitMode((value) => (value === 'contain' ? 'cover' : 'contain'))
+              }}
+            >
+              <span className="player-action__icon">
+                <PlayerActionIcon kind={fitMode === 'cover' ? 'fill-off' : 'fill'} />
+              </span>
+              <span className="player-action__label">Fill</span>
+            </button>
+            <button
+              type="button"
+              className="player-action"
+              onClick={() => {
+                showControls()
                 void enterImmersivePlayback()
               }}
             >
               <span className="player-action__icon">
                 <PlayerActionIcon kind="fullscreen" />
               </span>
-              Full Screen
+              <span className="player-action__label">Full Screen</span>
             </button>
           </div>
 
@@ -690,6 +812,11 @@ export function PlayerPage() {
                     aria-pressed={option.selected}
                   >
                     <span>{option.label}</span>
+                    {option.selected ? (
+                      <span className="player-picker__check" aria-hidden="true">
+                        <PlayerActionIcon kind="check" />
+                      </span>
+                    ) : null}
                   </button>
                 ))}
 
