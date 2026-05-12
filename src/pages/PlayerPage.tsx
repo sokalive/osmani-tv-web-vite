@@ -51,6 +51,14 @@ function PlayerActionIcon({ kind }: { kind: 'play' | 'language' | 'quality' | 'f
   )
 }
 
+function CloseIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 7l10 10M17 7 7 17" />
+    </svg>
+  )
+}
+
 export function PlayerPage() {
   const navigate = useNavigate()
   const params = useParams()
@@ -331,6 +339,9 @@ export function PlayerPage() {
               className="player-screen__center-state"
               onClick={(event) => event.stopPropagation()}
             >
+              {status !== 'error' ? (
+                <span className="player-screen__status-spinner" aria-hidden="true" />
+              ) : null}
               <strong>{centerTitle}</strong>
               <p>{centerMessage}</p>
               {status === 'error' ? (
@@ -428,8 +439,13 @@ export function PlayerPage() {
                       ? 'Chagua Ubora'
                       : 'Chagua Lugha / Audio'}
                   </strong>
-                  <button type="button" onClick={() => setPickerKind(null)}>
-                    Close
+                  <button
+                    type="button"
+                    className="player-picker__close"
+                    onClick={() => setPickerKind(null)}
+                    aria-label="Close picker"
+                  >
+                    <CloseIcon />
                   </button>
                 </div>
 
@@ -441,9 +457,9 @@ export function PlayerPage() {
                       option.selected ? ' player-picker__row--active' : ''
                     }`}
                     onClick={option.onSelect}
+                    aria-pressed={option.selected}
                   >
                     <span>{option.label}</span>
-                    {option.selected ? <span>Selected</span> : null}
                   </button>
                 ))}
 

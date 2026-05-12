@@ -925,9 +925,6 @@ svg {
 .player-screen__overlay {
   position: absolute;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
   padding: 0;
   pointer-events: none;
   opacity: 0;
@@ -951,10 +948,14 @@ svg {
 }
 
 .player-screen__topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px 8px;
+  padding: max(8px, env(safe-area-inset-top, 0px)) 12px 8px;
   background: rgba(5, 8, 14, 0.36);
 }
 
@@ -1005,8 +1006,10 @@ svg {
 }
 
 .player-screen__center-state {
-  justify-self: center;
-  align-self: center;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
   max-width: 300px;
   padding: 18px 16px;
   border-radius: 14px;
@@ -1018,6 +1021,20 @@ svg {
 .player-screen__center-state strong {
   display: block;
   margin-bottom: 8px;
+  color: #e5e7eb;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.player-screen__status-spinner {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  margin-bottom: 10px;
+  border: 3px solid rgba(255, 255, 255, 0.16);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
 }
 
 .player-screen__center-state p,
@@ -1039,19 +1056,23 @@ svg {
 }
 
 .player-screen__bottom-actions {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  position: absolute;
+  right: 10px;
+  bottom: 0;
+  left: 10px;
+  display: flex;
   gap: 8px;
-  padding: 0 10px 10px;
+  padding-bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) + 4px));
 }
 
 .player-action {
+  flex: 1;
   min-height: 48px;
   background: rgba(17, 24, 39, 0.56);
   padding: 0 8px;
   border-radius: 12px;
   border: 1px solid rgba(148, 163, 184, 0.26);
-  font-size: 0.72rem;
+  font-size: 10px;
   line-height: 1.2;
   color: #e5e7eb;
   display: grid;
@@ -1079,7 +1100,7 @@ svg {
   position: absolute;
   inset: 0;
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   z-index: 20;
 }
@@ -1094,13 +1115,15 @@ svg {
 .player-picker__sheet {
   position: relative;
   width: min(100%, 360px);
-  margin: 0 12px 12px;
-  padding: 14px;
-  border-radius: 18px;
-  background: rgba(9, 12, 18, 0.96);
+  max-height: 80%;
+  margin: 0 20px;
+  padding: 0;
+  border-radius: 14px;
+  background: #10141c;
   border: 1px solid rgba(148, 163, 184, 0.22);
   box-shadow: var(--shadow);
   animation: modal-sheet-in 180ms ease-out;
+  overflow: hidden;
 }
 
 .player-picker__header {
@@ -1108,52 +1131,73 @@ svg {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  margin-bottom: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 .player-picker__header strong {
-  font-size: 1rem;
+  color: #f8fafc;
+  font-size: 14px;
+  font-weight: 700;
 }
 
-.player-picker__header button {
-  min-height: 36px;
-  padding: 0 12px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--white);
+.player-picker__close {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 14px;
+  background: rgba(30, 41, 59, 0.7);
+  display: grid;
+  place-items: center;
+}
+
+.player-picker__close svg {
+  width: 16px;
+  height: 16px;
+  stroke: #ffffff;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
 }
 
 .player-picker__row,
 .player-picker__mute-toggle {
   width: 100%;
-  min-height: 48px;
-  margin-top: 8px;
-  padding: 0 14px;
-  border-radius: 12px;
+  min-height: 0;
+  margin-top: 0;
+  padding: 12px 16px;
+  border-radius: 0;
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   gap: 10px;
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--white);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: transparent;
+  color: #e5e7eb;
+  border: 0;
 }
 
 .player-picker__row--active {
-  border-color: rgba(30, 201, 103, 0.32);
   background: rgba(30, 201, 103, 0.12);
 }
 
-.player-picker__row span:last-child {
-  color: #1ec967;
-  font-size: 0.76rem;
+.player-picker__row span,
+.player-picker__mute-toggle span {
+  flex-shrink: 1;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.player-picker__row--active span {
+  color: #a7f3d0;
   font-weight: 700;
 }
 
 .player-picker__empty {
-  margin: 10px 0 0;
+  margin: 0;
+  padding: 12px 16px 16px;
   color: var(--muted);
-  font-size: 0.83rem;
+  font-size: 13px;
   line-height: 1.45;
   text-align: center;
 }
