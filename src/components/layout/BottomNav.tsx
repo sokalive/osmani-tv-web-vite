@@ -64,10 +64,16 @@ export function BottomNav({ brandName }: BottomNavProps) {
               `bottom-nav__item${isActive ? ' bottom-nav__item--active' : ''}`
             }
           >
-            <span className="bottom-nav__icon">
-              <NavIcon name={item.icon} />
-            </span>
-            <span className="bottom-nav__label">{item.label}</span>
+            {({ isActive }) => (
+              <>
+                <span className="bottom-nav__icon">
+                  <NavIcon name={item.icon} />
+                </span>
+                <span className={`bottom-nav__label${isActive ? ' bottom-nav__label--active' : ''}`}>
+                  {item.label}
+                </span>
+              </>
+            )}
           </NavLink>
         ))}
       </div>

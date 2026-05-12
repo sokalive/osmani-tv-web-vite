@@ -655,8 +655,8 @@ svg {
   right: 0;
   bottom: 0;
   z-index: 30;
-  padding: 0 14px calc(14px + env(safe-area-inset-bottom, 0px));
-  pointer-events: none;
+  background: #0c0608;
+  pointer-events: auto;
 }
 
 .bottom-nav__inner {
@@ -664,35 +664,32 @@ svg {
   margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  padding: 10px 10px 7px;
-  border-radius: 22px;
-  background: rgba(18, 9, 12, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: var(--shadow);
-  pointer-events: auto;
+  gap: 0;
+  min-height: calc(58px + env(safe-area-inset-bottom, 0px));
+  padding: 7px 6px env(safe-area-inset-bottom, 0px);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #0c0608;
+  box-shadow: 0 -8px 18px rgba(0, 0, 0, 0.42);
 }
 
 .bottom-nav__item {
   display: grid;
   justify-items: center;
-  gap: 5px;
+  align-content: center;
+  gap: 2px;
+  padding: 0;
   color: var(--tab-inactive);
   min-width: 0;
 }
 
 .bottom-nav__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 14px;
   display: grid;
   place-items: center;
-  background: rgba(255, 255, 255, 0.06);
 }
 
 .bottom-nav__icon svg {
-  width: 19px;
-  height: 19px;
+  width: 24px;
+  height: 24px;
   stroke: currentColor;
   fill: none;
   stroke-width: 1.8;
@@ -704,17 +701,21 @@ svg {
   color: var(--tab-active);
 }
 
-.bottom-nav__item--active .bottom-nav__icon {
-  background: rgba(255, 179, 71, 0.15);
-  box-shadow: 0 0 0 1px rgba(255, 179, 71, 0.16);
+.bottom-nav__item--active .bottom-nav__icon svg {
+  width: 27px;
+  height: 27px;
 }
 
 .bottom-nav__label {
   text-align: center;
-  font-size: 0.66rem;
-  line-height: 1.05;
+  font-size: 10.5px;
+  line-height: 1;
   font-weight: 700;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.12px;
+}
+
+.bottom-nav__label--active {
+  color: var(--tab-active);
 }
 
 .whatsapp-fab {
