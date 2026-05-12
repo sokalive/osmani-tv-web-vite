@@ -1,4 +1,5 @@
 import { env } from '../config/env'
+import { isLikelyHlsManifestUrl } from './playbackMime'
 import type {
   BannerRecord,
   ChannelCategory,
@@ -12,8 +13,6 @@ import type {
 } from '../types/osmani'
 
 type RawChannelRecord = Record<string, unknown>
-
-const directManifestPattern = /\.m3u8($|[?#])/i
 
 function resolveBaseUrl(rawBaseUrl: string) {
   if (/^https?:\/\//i.test(rawBaseUrl)) {
@@ -70,6 +69,19 @@ function asString(raw: unknown) {
   return typeof raw === 'string' ? raw.trim() : ''
 }
 
+function sanitizeHttpOriginOrReferer(raw: unknown) {
+  const value = asString(raw)
+  if (!value) {
+    return ''
+  }
+
+  if (!/^https?:\/\//i.test(value)) {
+    return ''
+  }
+
+  return value
+}
+
 function toProxyUrl(
   proxyBaseUrl: string,
   url: string,
@@ -78,12 +90,14 @@ function toProxyUrl(
   const params = new URLSearchParams()
   params.set('url', url)
 
-  if (headers.referer) {
-    params.set('referer', headers.referer)
+  const referer = sanitizeHttpOriginOrReferer(headers.referer)
+  if (referer) {
+    params.set('referer', referer)
   }
 
-  if (headers.origin) {
-    params.set('origin', headers.origin)
+  const origin = sanitizeHttpOriginOrReferer(headers.origin)
+  if (origin) {
+    params.set('origin', origin)
   }
 
   if (headers.userAgent) {
@@ -179,8 +193,8 @@ function buildCanonicalPlaybackUrl(
   }
 
   const headers = {
-    origin: channel.origin,
-    referer: channel.referer,
+    origin: sanitizeHttpOriginOrReferer(channel.origin),
+    referer: sanitizeHttpOriginOrReferer(channel.referer),
     userAgent: channel.userAgent,
   }
   const proxyBaseUrl = resolveProxyBaseUrl(channel.streamProxy)
@@ -354,6 +368,7 @@ function createPlaybackCandidates(channel: ChannelRow) {
         return list
       }
 
+      const hlsLike = isLikelyHlsManifestUrl(playbackUrl)
       list.push({
         id: source.id,
         label: source.label,
@@ -362,7 +377,8 @@ function createPlaybackCandidates(channel: ChannelRow) {
         deliveryPath: channel.deliveryPath,
         streamProxy: channel.streamProxy,
         usesBackendDelivery: true,
-        isDirectManifest: true,
+        isDirectManifest: hlsLike,
+        embedPlayback: !hlsLike,
       })
 
       return list
@@ -370,8 +386,8 @@ function createPlaybackCandidates(channel: ChannelRow) {
   }
 
   const headers = {
-    origin: channel.origin,
-    referer: channel.referer,
+    origin: sanitizeHttpOriginOrReferer(channel.origin),
+    referer: sanitizeHttpOriginOrReferer(channel.referer),
     userAgent: channel.userAgent,
   }
   const compatibilityProxyBaseUrl = resolveProxyBaseUrl(channel.streamProxy)
@@ -385,15 +401,18 @@ function createPlaybackCandidates(channel: ChannelRow) {
       return list
     }
 
+    const playbackUrl = toProxyUrl(compatibilityProxyBaseUrl, source.url, headers)
+    const hlsLike = isLikelyHlsManifestUrl(playbackUrl)
     list.push({
       id: source.id,
       label: source.label,
       sourceUrl: source.url,
-      playbackUrl: toProxyUrl(compatibilityProxyBaseUrl, source.url, headers),
+      playbackUrl,
       deliveryPath: '',
       streamProxy: compatibilityProxyBaseUrl,
       usesBackendDelivery: false,
-      isDirectManifest: directManifestPattern.test(source.url),
+      isDirectManifest: hlsLike,
+      embedPlayback: !hlsLike,
     })
 
     return list
@@ -420,7 +439,10 @@ function getPlaybackState(channel: ChannelRow, candidates: PlaybackCandidate[]) 
     }
   }
 
-  if (channel.playerType === 'webview') {
+  if (
+    channel.playerType === 'webview' &&
+    !candidates.some((candidate) => candidate.embedPlayback || candidate.isDirectManifest)
+  ) {
     return {
       readiness: 'unsupported' as PlaybackReadiness,
       message:
@@ -428,7 +450,7 @@ function getPlaybackState(channel: ChannelRow, candidates: PlaybackCandidate[]) 
     }
   }
 
-  if (!candidates.some((candidate) => candidate.isDirectManifest)) {
+  if (!candidates.some((candidate) => candidate.isDirectManifest || candidate.embedPlayback)) {
     return {
       readiness: 'headers-required' as PlaybackReadiness,
       message:

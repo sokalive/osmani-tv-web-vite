@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { EmergencyModal } from '../components/modals/EmergencyModal'
 import { env } from '../config/env'
@@ -36,6 +36,7 @@ import {
 import { getDeviceIdentity } from '../services/auth/deviceIdentity'
 import { computeSubscriptionProgress } from '../lib/subscriptionMath'
 import { useUpdateRuntime } from '../hooks/useUpdateRuntime'
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import type {
   ChannelViewModel,
   PlaybackGateResult,
@@ -251,6 +252,24 @@ export function AppShell() {
     useState<ChannelViewModel | null>(null)
   const isSubscribed = subscription?.active === true
   const updateRuntime = useUpdateRuntime()
+  const subscriptionRef = useRef<SubscriptionStatus | null>(null)
+  const subscriptionRequestIdRef = useRef(0)
+  const previousPathnameRef = useRef(location.pathname)
+  const scrollPositionsRef = useRef(new Map<string, number>())
+  const shellOverlayVisible =
+    premiumModalVisible ||
+    Boolean(transferConfirmEvent) ||
+    Boolean(manualGiftAckKey) ||
+    (isHomeRoute && Boolean(expiryReminderKey) && !manualGiftAckKey && !blockedReason) ||
+    (Boolean(catalog.data?.settings.emergencyMode) && !emergencyDismissed) ||
+    (Boolean(blockedReason) && !blockedPaused) ||
+    updateRuntime.state.visible
+
+  useBodyScrollLock(shellOverlayVisible)
+
+  useEffect(() => {
+    subscriptionRef.current = subscription
+  }, [subscription])
 
   const refreshSubscription = useCallback(
     async (
@@ -260,6 +279,7 @@ export function AppShell() {
         verify?: boolean
       } = {},
     ) => {
+      const requestId = ++subscriptionRequestIdRef.current
       try {
         const { deviceId, deviceFingerprint } = await getDeviceIdentity()
         if (options.recover) {
@@ -272,6 +292,10 @@ export function AppShell() {
         const runtimeBlockedReason = mapPlaybackGateReasonToBlockedReason(
           next.playbackGateReason,
         )
+        if (requestId !== subscriptionRequestIdRef.current) {
+          return next
+        }
+
         setSubscription(next)
         setSubscriptionVersion((current) => current + 1)
 
@@ -298,8 +322,11 @@ export function AppShell() {
 
         return next
       } catch {
-        setSubscription(null)
-        return null
+        if (requestId !== subscriptionRequestIdRef.current) {
+          return subscriptionRef.current
+        }
+
+        return subscriptionRef.current
       }
     },
     [blockedReasonHint],
@@ -394,6 +421,29 @@ export function AppShell() {
   useEffect(() => {
     reloadIfStale(isPlayerRoute ? 12000 : 4000, { silent: true })
   }, [isPlayerRoute, location.pathname, reloadIfStale])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const previousPathname = previousPathnameRef.current
+    scrollPositionsRef.current.set(previousPathname, window.scrollY)
+    previousPathnameRef.current = location.pathname
+
+    if (location.pathname.startsWith('/player/')) {
+      return
+    }
+
+    const nextScrollTop = scrollPositionsRef.current.get(location.pathname) ?? 0
+    const frame = window.requestAnimationFrame(() => {
+      window.scrollTo({ top: nextScrollTop, behavior: 'auto' })
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+    }
+  }, [location.pathname])
 
   useEffect(() => {
     if (catalog.data?.settings.emergencyMode) {
@@ -611,13 +661,14 @@ export function AppShell() {
   const handlePremiumUnlockSuccess = useCallback(async () => {
     const next = await refreshSubscription('premium-unlock', { verify: true })
     if (!isPlaybackAllowed(next)) {
-      return
+      return false
     }
 
     if (premiumModalChannel) {
       catalog.selectChannel(premiumModalChannel)
       navigate(`/player/${premiumModalChannel.id}`)
     }
+    return true
   }, [catalog, navigate, premiumModalChannel, refreshSubscription])
 
   return (

@@ -25,6 +25,7 @@
   --tab-inactive: #dde3ec;
   --shadow: 0 20px 45px rgba(0, 0, 0, 0.38);
   --glow: 0 0 0 1px rgba(255, 203, 61, 0.14), 0 24px 45px rgba(0, 0, 0, 0.42);
+  --app-dvh: 100vh;
   background:
     radial-gradient(circle at top, rgba(120, 17, 45, 0.24), transparent 34%),
     linear-gradient(180deg, #090305 0%, #0c0608 30%, #12090c 100%);
@@ -37,13 +38,42 @@
 
 html {
   scroll-behavior: smooth;
+  min-height: 100%;
+  min-height: var(--app-dvh);
+  background: #090305;
 }
 
 body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: var(--app-dvh);
   background: transparent;
+}
+
+html.runtime-touch,
+body.runtime-touch {
+  overscroll-behavior-y: none;
+}
+
+body.runtime-touch {
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+html.app-scroll-locked,
+body.app-scroll-locked {
+  overflow: hidden;
+}
+
+html.runtime-touch body,
+body.runtime-touch button,
+body.runtime-touch a,
+body.runtime-touch [role='button'],
+body.runtime-touch input,
+body.runtime-touch select,
+body.runtime-touch textarea {
+  touch-action: manipulation;
 }
 
 a {
@@ -63,6 +93,15 @@ button {
   border: 0;
 }
 
+button,
+a,
+input,
+textarea,
+select,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+}
+
 img,
 svg {
   display: block;
@@ -71,12 +110,15 @@ svg {
 
 #root {
   min-height: 100vh;
+  min-height: var(--app-dvh);
 }
 
 .app-shell {
   position: relative;
   min-height: 100vh;
+  min-height: var(--app-dvh);
   overflow-x: hidden;
+  isolation: isolate;
 }
 
 .app-shell__ambient {
@@ -91,7 +133,7 @@ svg {
 .page-content {
   width: min(100%, 480px);
   margin: 0 auto;
-  padding: 12px 16px 132px;
+  padding: 12px 16px calc(132px + env(safe-area-inset-bottom, 0px));
   position: relative;
   z-index: 1;
 }
@@ -218,6 +260,7 @@ svg {
   overflow-x: auto;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
+  touch-action: pan-x;
 }
 
 .catalog-screen__filters::-webkit-scrollbar {
@@ -325,6 +368,7 @@ svg {
   scroll-snap-type: x mandatory;
   scrollbar-width: none;
   overscroll-behavior-x: contain;
+  touch-action: pan-x;
 }
 
 .hero-carousel__viewport::-webkit-scrollbar {
@@ -731,7 +775,7 @@ svg {
   background: #25d366;
   color: #ffffff;
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.28);
-  z-index: 1000;
+  z-index: 70;
   transition:
     transform 140ms ease,
     filter 140ms ease;
@@ -892,7 +936,12 @@ svg {
 
 .player-screen {
   min-height: 100vh;
+  min-height: var(--app-dvh);
   display: grid;
+  background: #000000;
+}
+
+.player-screen--immersive {
   background: #000000;
 }
 
@@ -906,8 +955,25 @@ svg {
 .player-screen__surface {
   position: relative;
   min-height: 100vh;
+  min-height: var(--app-dvh);
   background: #000000;
   cursor: pointer;
+  touch-action: manipulation;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.992);
+  transition:
+    opacity 220ms ease,
+    transform 260ms ease;
+}
+
+.player-screen__surface--ready {
+  opacity: 1;
+  transform: none;
+}
+
+.player-screen__surface--immersive {
+  background: #000000;
 }
 
 .player-screen__video {
@@ -923,9 +989,53 @@ svg {
   object-fit: cover;
 }
 
+.player-screen__surface--embed {
+  touch-action: pan-x pan-y manipulation;
+}
+
+.player-screen__video--hidden {
+  position: absolute;
+  inset: 0;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.player-screen__embed-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: #000000;
+}
+
+.player-screen__embed {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #000000;
+}
+
+.player-screen__embed-wrap--cover .player-screen__embed {
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  height: 100%;
+  min-width: 100%;
+  min-height: 100%;
+  transform: translate(-50%, -50%) scale(1.06);
+  transform-origin: center center;
+}
+
 .player-screen__overlay {
   position: absolute;
   inset: 0;
+  z-index: 2;
   padding: 0;
   pointer-events: none;
   opacity: 0;
@@ -938,6 +1048,7 @@ svg {
       transparent 70%,
       rgba(0, 0, 0, 0.7) 100%
     );
+  backdrop-filter: blur(2px);
 }
 
 .player-screen__overlay--visible {
@@ -989,7 +1100,8 @@ svg {
   align-items: center;
   gap: 10px;
   padding: max(8px, env(safe-area-inset-top, 0px)) 12px 8px;
-  background: rgba(5, 8, 14, 0.36);
+  background: rgba(5, 8, 14, 0.42);
+  backdrop-filter: blur(12px);
 }
 
 .player-screen__back {
@@ -1099,7 +1211,8 @@ svg {
   max-width: 300px;
   padding: 18px 16px;
   border-radius: 14px;
-  background: rgba(9, 12, 18, 0.45);
+  background: rgba(9, 12, 18, 0.58);
+  backdrop-filter: blur(14px);
   text-align: center;
   box-shadow: var(--shadow);
 }
@@ -1153,10 +1266,10 @@ svg {
 
 .player-action {
   flex: 1;
-  min-height: 48px;
+  min-height: 52px;
   background: rgba(17, 24, 39, 0.56);
   padding: 0 8px;
-  border-radius: 12px;
+  border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.26);
   font-size: 10px;
   line-height: 1.2;
@@ -1165,6 +1278,7 @@ svg {
   justify-items: center;
   align-content: center;
   gap: 3px;
+  touch-action: manipulation;
 }
 
 .player-action__icon {
@@ -1676,7 +1790,7 @@ svg {
 .transfer-modal {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 1200;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1684,7 +1798,7 @@ svg {
 }
 
 .popup-modal {
-  z-index: 89;
+  z-index: 1210;
   padding: 28px 22px;
 }
 
@@ -1701,7 +1815,7 @@ svg {
   position: relative;
   z-index: 1;
   width: min(100%, 420px);
-  max-height: min(92vh, 720px);
+  max-height: min(calc(var(--app-dvh, 100vh) - 32px), 720px);
   overflow: hidden;
   border-radius: 22px;
   padding: 22px 22px 18px;
@@ -1901,7 +2015,7 @@ svg {
 .update-overlay {
   position: fixed;
   inset: 0;
-  z-index: 98;
+  z-index: 1280;
 }
 
 .update-overlay__scrim {
@@ -2103,7 +2217,7 @@ svg {
 .ota-debug-overlay {
   position: fixed;
   inset: 0;
-  z-index: 140;
+  z-index: 1290;
 }
 
 .ota-debug-overlay__scrim {
@@ -2484,7 +2598,7 @@ svg {
 .transferred-away-modal {
   position: fixed;
   inset: 0;
-  z-index: 96;
+  z-index: 1230;
 }
 
 .transferred-away-modal__backdrop {
@@ -2604,7 +2718,7 @@ svg {
 .transfer-confirm-modal {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  z-index: 1220;
 }
 
 .transfer-confirm-modal__backdrop {
@@ -2751,7 +2865,7 @@ svg {
   position: relative;
   z-index: 1;
   width: min(100%, 88vw);
-  max-height: min(85vh, 760px);
+  max-height: min(calc(var(--app-dvh, 100vh) - 28px), 760px);
   overflow: auto;
   border: 1px solid rgba(250, 204, 21, 0.18);
   color: var(--white);

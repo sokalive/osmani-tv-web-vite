@@ -1,5 +1,6 @@
 import type Hls from 'hls.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { isLikelyHlsManifestUrl } from '../lib/playbackMime'
 
 export type PlaybackStatus =
   | 'idle'
@@ -100,6 +101,10 @@ export function useHlsPlayback({
 }: UseHlsPlaybackOptions) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const hlsRef = useRef<Hls | null>(null)
+  const lastProgressAtRef = useRef(0)
+  const lastObservedTimeRef = useRef(0)
+  const lastRecoveryAtRef = useRef(0)
+  const stallRecoveryCountRef = useRef(0)
   const [internalStatus, setInternalStatus] = useState<PlaybackStatus>('idle')
   const [internalError, setInternalError] = useState<string | null>(null)
   const [isMuted, setIsMuted] = useState(startMuted)
@@ -109,6 +114,10 @@ export function useHlsPlayback({
   const destroyPlayer = useCallback(() => {
     hlsRef.current?.destroy()
     hlsRef.current = null
+    lastProgressAtRef.current = 0
+    lastObservedTimeRef.current = 0
+    lastRecoveryAtRef.current = 0
+    stallRecoveryCountRef.current = 0
 
     if (videoRef.current) {
       videoRef.current.pause()
@@ -296,6 +305,10 @@ export function useHlsPlayback({
     video.preload = 'auto'
     queueMicrotask(() => {
       if (!isDisposed) {
+        lastProgressAtRef.current = Date.now()
+        lastObservedTimeRef.current = 0
+        lastRecoveryAtRef.current = 0
+        stallRecoveryCountRef.current = 0
         setIsMuted(startMuted)
         setInternalError(null)
         setInternalStatus('loading')
@@ -328,10 +341,84 @@ export function useHlsPlayback({
         current === 'error' || current === 'awaiting-user' ? current : 'ready',
       )
 
+    const markPlaybackProgress = () => {
+      lastObservedTimeRef.current = video.currentTime || 0
+      lastProgressAtRef.current = Date.now()
+      stallRecoveryCountRef.current = 0
+      setInternalError((current) =>
+        current?.startsWith('Stream stalled') ? null : current,
+      )
+    }
+
+    const attemptStallRecovery = () => {
+      const now = Date.now()
+      if (now - lastRecoveryAtRef.current < 5000) {
+        return
+      }
+
+      lastRecoveryAtRef.current = now
+      stallRecoveryCountRef.current += 1
+
+      if (stallRecoveryCountRef.current >= 3) {
+        setInternalStatus('error')
+        setInternalError('Stream stalled repeatedly. Trying the next source.')
+        return
+      }
+
+      setInternalStatus('buffering')
+      setInternalError('Stream stalled. Recovering the live stream...')
+
+      const hls = hlsRef.current as
+        | (Hls & {
+            recoverMediaError?: () => void
+            startLoad?: (startPosition?: number) => void
+          })
+        | null
+
+      try {
+        hls?.recoverMediaError?.()
+      } catch {}
+
+      try {
+        hls?.startLoad?.(-1)
+      } catch {}
+
+      if (!hls) {
+        try {
+          video.load()
+        } catch {}
+      }
+
+      void tryPlay()
+    }
+
     video.addEventListener('playing', onPlaying)
     video.addEventListener('waiting', onWaiting)
     video.addEventListener('canplay', onCanPlay)
     video.addEventListener('pause', onPause)
+    video.addEventListener('timeupdate', markPlaybackProgress)
+    video.addEventListener('progress', markPlaybackProgress)
+    video.addEventListener('seeking', markPlaybackProgress)
+
+    const stallWatchdog = window.setInterval(() => {
+      if (isDisposed || video.paused || video.ended || !src) {
+        return
+      }
+
+      const currentTime = video.currentTime || 0
+      if (currentTime > lastObservedTimeRef.current + 0.05) {
+        lastObservedTimeRef.current = currentTime
+        lastProgressAtRef.current = Date.now()
+        stallRecoveryCountRef.current = 0
+        return
+      }
+
+      if (Date.now() - lastProgressAtRef.current < 8000) {
+        return
+      }
+
+      attemptStallRecovery()
+    }, 4000)
 
     const cleanup = () => {
       isDisposed = true
@@ -339,6 +426,10 @@ export function useHlsPlayback({
       video.removeEventListener('waiting', onWaiting)
       video.removeEventListener('canplay', onCanPlay)
       video.removeEventListener('pause', onPause)
+      video.removeEventListener('timeupdate', markPlaybackProgress)
+      video.removeEventListener('progress', markPlaybackProgress)
+      video.removeEventListener('seeking', markPlaybackProgress)
+      window.clearInterval(stallWatchdog)
       destroyPlayer()
     }
 
@@ -348,13 +439,23 @@ export function useHlsPlayback({
       void tryPlay()
     }
 
+    if (!isLikelyHlsManifestUrl(src)) {
+      queueMicrotask(() => {
+        if (!isDisposed) {
+          setInternalStatus('error')
+          setInternalError('This URL is not an HLS manifest (.m3u8).')
+        }
+      })
+      return cleanup
+    }
+
     if (video.canPlayType(LIVE_HLS_MIME)) {
       attachNativePlayback()
       return cleanup
     }
 
     const attachManagedHls = async () => {
-      const { default: HlsLibrary } = await import('hls.js/dist/hls.light.mjs')
+      const { default: HlsLibrary } = await import('hls.js')
 
       if (isDisposed) {
         return
@@ -375,13 +476,20 @@ export function useHlsPlayback({
       const hls = new HlsLibrary({
         enableWorker: true,
         lowLatencyMode: false,
-        backBufferLength: 90,
+        liveDurationInfinity: true,
+        backBufferLength: 30,
         maxBufferLength: 30,
         maxMaxBufferLength: 120,
         liveSyncDurationCount: 3,
-        manifestLoadingMaxRetry: 4,
-        levelLoadingMaxRetry: 5,
-        fragLoadingMaxRetry: 6,
+        manifestLoadingMaxRetry: 6,
+        manifestLoadingRetryDelay: 1000,
+        manifestLoadingMaxRetryTimeout: 64000,
+        levelLoadingMaxRetry: 6,
+        levelLoadingRetryDelay: 1000,
+        levelLoadingMaxRetryTimeout: 32000,
+        fragLoadingMaxRetry: 8,
+        fragLoadingRetryDelay: 500,
+        fragLoadingMaxRetryTimeout: 32000,
       })
 
       hlsRef.current = hls

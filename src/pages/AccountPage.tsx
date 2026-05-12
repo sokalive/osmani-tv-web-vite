@@ -530,7 +530,10 @@ export function AccountPage() {
           visible={premiumModalVisible}
           channelName="Chaneli Uliyofungua"
           onClose={() => setPremiumModalVisible(false)}
-          onUnlockSuccess={loadAccount}
+          onUnlockSuccess={async () => {
+            await loadAccount()
+            return true
+          }}
         />
       ) : null}
     </div>

@@ -6,16 +6,18 @@ import {
   getPaymentProviders,
   getPaymentStatus,
   getPlans,
+  verifySubscription,
 } from '../../services/api/subscriptionService'
 import { formatSubscriptionExpiry } from '../../lib/formatExpiry'
 import { getDeviceIdentity } from '../../services/auth/deviceIdentity'
-import type { PaymentProvider, SubscriptionPlan } from '../../types/osmani'
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
+import type { PaymentProvider, SubscriptionPlan, SubscriptionStatus } from '../../types/osmani'
 
 type PremiumModalProps = {
   visible: boolean
   channelName?: string
   onClose: () => void
-  onUnlockSuccess?: () => Promise<void> | void
+  onUnlockSuccess?: () => Promise<boolean | void> | boolean | void
 }
 
 const ACCENT = '#FACC15'
@@ -39,6 +41,13 @@ const BENEFITS = [
   'Hakuna Kuganda kwa Channel',
   'Channel Zipo Live Muda Wote',
 ]
+const PAYMENT_POLL_MS = 3000
+const VERIFY_RETRY_MS = 2000
+const VERIFY_WINDOW_MS = 20000
+const PAYMENT_ERROR_LIMIT = 3
+
+type PremiumStep = 1 | 2 | 3 | 4 | 5 | 6
+type FailureKind = 'payment' | 'verification'
 
 function formatCountdown(totalSeconds: number) {
   const safe = Math.max(0, Math.floor(totalSeconds))
@@ -67,8 +76,14 @@ function formatPlanDuration(raw: string) {
   return match ? `(${match[0]} siku)` : `(${value.replace(/^\(|\)$/g, '')})`
 }
 
-function isSubscriptionActive(subscription: { active?: boolean } | null | undefined) {
-  return Boolean(subscription?.active)
+function isSubscriptionReadyForPlayback(
+  subscription: Pick<SubscriptionStatus, 'active' | 'playbackAllowed'> | null | undefined,
+) {
+  if (!subscription) {
+    return false
+  }
+
+  return subscription.playbackAllowed ?? subscription.active
 }
 
 function parseExpiryMs(value: string | null | undefined) {
@@ -291,7 +306,7 @@ export function PremiumModal({
   onClose,
   onUnlockSuccess,
 }: PremiumModalProps) {
-  const [step, setStep] = useState(1)
+  const [step, setStep] = useState<PremiumStep>(1)
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
   const [plansLoading, setPlansLoading] = useState(false)
   const [plansError, setPlansError] = useState('')
@@ -303,12 +318,16 @@ export function PremiumModal({
   const [submitting, setSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState('')
   const [failureReason, setFailureReason] = useState('')
+  const [failureKind, setFailureKind] = useState<FailureKind>('payment')
   const [successExpiresAt, setSuccessExpiresAt] = useState<string | null>(null)
   const [finalizingSuccess, setFinalizingSuccess] = useState(false)
+  const [continueError, setContinueError] = useState('')
   const [providers, setProviders] = useState<PaymentProvider[]>(FALLBACK_NETWORKS)
   const [logoErrors, setLogoErrors] = useState<Record<string, boolean>>({})
   const pollingDoneRef = useRef(false)
   const subscriptionStreamRef = useRef<EventSource | null>(null)
+  const paymentPollErrorCountRef = useRef(0)
+  const verificationRunIdRef = useRef(0)
 
   const selectedAmountDisplay =
     selectedPlan && Number.isFinite(selectedPlan.price)
@@ -316,7 +335,9 @@ export function PremiumModal({
       : 'TSh —'
   const isPhoneValid =
     phoneNumber.length === 10 && phoneNumber.startsWith('0')
-  const compactResultStep = step === 4 || step === 5
+  const compactResultStep = step === 5 || step === 6
+
+  useBodyScrollLock(visible)
 
   const closeSubscriptionStream = useCallback(() => {
     if (!subscriptionStreamRef.current) {
@@ -326,19 +347,6 @@ export function PremiumModal({
     subscriptionStreamRef.current.close()
     subscriptionStreamRef.current = null
   }, [])
-
-  useEffect(() => {
-    if (!visible || typeof document === 'undefined') {
-      return
-    }
-
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [visible])
 
   useEffect(() => {
     if (!visible || typeof document === 'undefined') {
@@ -360,9 +368,11 @@ export function PremiumModal({
   useEffect(() => {
     if (visible) {
       pollingDoneRef.current = false
+      paymentPollErrorCountRef.current = 0
       return
     }
 
+    verificationRunIdRef.current += 1
     closeSubscriptionStream()
     setStep(1)
     setPlans([])
@@ -375,8 +385,10 @@ export function PremiumModal({
     setSubmitting(false)
     setSubmissionError('')
     setFailureReason('')
+    setFailureKind('payment')
     setSuccessExpiresAt(null)
     setFinalizingSuccess(false)
+    setContinueError('')
     setProviders(FALLBACK_NETWORKS)
     setLogoErrors({})
   }, [closeSubscriptionStream, visible])
@@ -447,31 +459,87 @@ export function PremiumModal({
     }
   }, [visible])
 
-  const moveToSuccessStep = useCallback(
+  const transitionToFailure = useCallback(
+    (reason: string, nextFailureKind: FailureKind) => {
+      pollingDoneRef.current = true
+      verificationRunIdRef.current += 1
+      closeSubscriptionStream()
+      setFailureKind(nextFailureKind)
+      setFailureReason(reason)
+      setContinueError('')
+      setStep(6)
+    },
+    [closeSubscriptionStream],
+  )
+
+  const transitionToSuccess = useCallback((expiresAt?: string | null) => {
+    setSuccessExpiresAt(expiresAt ?? null)
+    setFailureReason('')
+    setContinueError('')
+    setStep(5)
+  }, [])
+
+  const beginVerification = useCallback(
     async (streamExpiresAt?: string | null) => {
-      if (pollingDoneRef.current) {
+      if (step === 4) {
         return
       }
 
       pollingDoneRef.current = true
+      paymentPollErrorCountRef.current = 0
       closeSubscriptionStream()
+      setFailureReason('')
+      setContinueError('')
+      setFailureKind('verification')
+      setStep(4)
+
+      const runId = ++verificationRunIdRef.current
+      const startedAt = Date.now()
 
       try {
-        const { deviceId } = await getDeviceIdentity()
-        const subscription = await fetchSubscriptionStatus(deviceId)
-        const mergedExpiry = latestExpiryIso(subscription.expiresAt, streamExpiresAt)
-        setSuccessExpiresAt(
-          isSubscriptionActive(subscription)
-            ? mergedExpiry ?? subscription.expiresAt
-            : streamExpiresAt ?? null,
-        )
-      } catch {
-        setSuccessExpiresAt(streamExpiresAt ?? null)
-      }
+        const { deviceId, deviceFingerprint } = await getDeviceIdentity()
+        if (runId !== verificationRunIdRef.current) {
+          return
+        }
 
-      setStep(4)
+        while (runId === verificationRunIdRef.current) {
+          const verified = await verifySubscription(deviceId, deviceFingerprint).catch(
+            () => null,
+          )
+          if (runId !== verificationRunIdRef.current) {
+            return
+          }
+
+          if (isSubscriptionReadyForPlayback(verified)) {
+            const mergedExpiry = latestExpiryIso(verified?.expiresAt, streamExpiresAt)
+            transitionToSuccess(mergedExpiry ?? verified?.expiresAt ?? streamExpiresAt)
+            return
+          }
+
+          if (Date.now() - startedAt >= VERIFY_WINDOW_MS) {
+            transitionToFailure(
+              'Malipo yamethibitishwa lakini kifurushi bado hakijawashwa. Gusa THIBITISHA TENA au ujaribu tena baada ya muda mfupi.',
+              'verification',
+            )
+            return
+          }
+
+          await new Promise((resolve) => {
+            globalThis.setTimeout(resolve, VERIFY_RETRY_MS)
+          })
+        }
+      } catch {
+        if (runId !== verificationRunIdRef.current) {
+          return
+        }
+
+        transitionToFailure(
+          'Imeshindikana kuthibitisha kifurushi chako. Gusa THIBITISHA TENA kujaribu upya.',
+          'verification',
+        )
+      }
     },
-    [closeSubscriptionStream],
+    [closeSubscriptionStream, step, transitionToFailure, transitionToSuccess],
   )
 
   useEffect(() => {
@@ -505,9 +573,11 @@ export function PremiumModal({
         if (
           payload.active === true ||
           payload.isActive === true ||
-          payload.is_active === true
+          payload.is_active === true ||
+          payload.playbackAllowed === true ||
+          payload.playback_allowed === true
         ) {
-          void moveToSuccessStep(expiresAt)
+          void beginVerification(expiresAt)
         }
       } catch {
         return
@@ -521,15 +591,23 @@ export function PremiumModal({
     return () => {
       closeSubscriptionStream()
     }
-  }, [closeSubscriptionStream, moveToSuccessStep, step, visible, waitingDeviceId])
+  }, [beginVerification, closeSubscriptionStream, step, visible, waitingDeviceId])
 
   useEffect(() => {
-    if (!visible || step !== 3 || !orderId) {
+    if (!visible || step !== 3 || !orderId || !waitingDeviceId) {
       return
     }
 
     const countdownTimer = window.setInterval(() => {
-      setRemainingSeconds((current) => Math.max(0, current - 1))
+      setRemainingSeconds((current) => {
+        const next = Math.max(0, current - 1)
+        if (next === 0 && current > 0 && !pollingDoneRef.current) {
+          window.clearInterval(countdownTimer)
+          window.clearInterval(pollTimer)
+          void beginVerification()
+        }
+        return next
+      })
     }, 1000)
 
     const pollTimer = window.setInterval(() => {
@@ -539,40 +617,54 @@ export function PremiumModal({
 
       void (async () => {
         try {
+          const subscription = await fetchSubscriptionStatus(waitingDeviceId).catch(() => null)
+          if (isSubscriptionReadyForPlayback(subscription)) {
+            window.clearInterval(pollTimer)
+            window.clearInterval(countdownTimer)
+            await beginVerification(subscription?.expiresAt ?? null)
+            return
+          }
+
           const result = await getPaymentStatus(orderId)
+          paymentPollErrorCountRef.current = 0
           if (result.status === 'SUCCESS') {
             window.clearInterval(pollTimer)
             window.clearInterval(countdownTimer)
-            await moveToSuccessStep()
+            await beginVerification()
             return
           }
 
           if (result.status === 'FAILED') {
-            pollingDoneRef.current = true
-            closeSubscriptionStream()
             window.clearInterval(pollTimer)
             window.clearInterval(countdownTimer)
-            setFailureReason(result.reason || 'Malipo hayajafanikiwa')
-            setStep(5)
+            transitionToFailure(
+              result.reason || 'Malipo hayajafanikiwa',
+              'payment',
+            )
           }
         } catch (error) {
-          pollingDoneRef.current = true
-          closeSubscriptionStream()
+          paymentPollErrorCountRef.current += 1
+          if (paymentPollErrorCountRef.current < PAYMENT_ERROR_LIMIT) {
+            return
+          }
+
           window.clearInterval(pollTimer)
           window.clearInterval(countdownTimer)
-          setFailureReason(
-            error instanceof Error ? error.message : 'Jaribu tena baadae.',
+          transitionToFailure(
+            error instanceof Error
+              ? error.message
+              : 'Imeshindikana kuendelea kuthibitisha malipo. Gusa THIBITISHA TENA.',
+            'verification',
           )
-          setStep(5)
         }
       })()
-    }, 3000)
+    }, PAYMENT_POLL_MS)
 
     return () => {
       window.clearInterval(countdownTimer)
       window.clearInterval(pollTimer)
     }
-  }, [closeSubscriptionStream, moveToSuccessStep, orderId, step, visible])
+  }, [beginVerification, orderId, step, transitionToFailure, visible, waitingDeviceId])
 
   async function handleStartPayment() {
     if (!selectedPlan || submitting) {
@@ -598,7 +690,11 @@ export function PremiumModal({
       })
 
       pollingDoneRef.current = false
+      paymentPollErrorCountRef.current = 0
+      verificationRunIdRef.current += 1
       setFailureReason('')
+      setFailureKind('payment')
+      setContinueError('')
       setWaitingDeviceId(deviceId)
       setOrderId(payment.orderId)
       setRemainingSeconds(payment.expiresInSeconds ?? 0)
@@ -614,8 +710,15 @@ export function PremiumModal({
 
   async function handleContinue() {
     setFinalizingSuccess(true)
+    setContinueError('')
     try {
-      await onUnlockSuccess?.()
+      const unlocked = await onUnlockSuccess?.()
+      if (unlocked === false) {
+        setContinueError(
+          'Imeshindikana kufungua channel sasa hivi. Gusa ENDELEA tena au ujaribu baada ya muda mfupi.',
+        )
+        return
+      }
       onClose()
     } finally {
       setFinalizingSuccess(false)
@@ -624,12 +727,20 @@ export function PremiumModal({
 
   function handleRetry() {
     pollingDoneRef.current = false
-    closeSubscriptionStream()
     setFailureReason('')
+    setSubmissionError('')
+    setContinueError('')
+
+    if (failureKind === 'verification' && waitingDeviceId) {
+      void beginVerification()
+      return
+    }
+
+    verificationRunIdRef.current += 1
+    closeSubscriptionStream()
     setOrderId(null)
     setWaitingDeviceId('')
     setRemainingSeconds(0)
-    setSubmissionError('')
     setStep(2)
   }
 
@@ -850,6 +961,37 @@ export function PremiumModal({
 
     if (step === 4) {
       return (
+        <div className="premium-modal__step3-wrap">
+          <div className="premium-modal__loader-halo-wrap">
+            <div className="premium-modal__loader-ring" />
+            <div className="premium-modal__loader-inner">
+              <PremiumIcon
+                name="check-circle"
+                className="premium-modal__icon premium-modal__icon--loader"
+              />
+            </div>
+          </div>
+
+          <h2 className="premium-modal__wait-title">Inathibitisha kifurushi...</h2>
+          <p className="premium-modal__wait-pin">
+            Tunasubiri backend kuthibitisha kwamba kifurushi kimewashwa kikamilifu.
+          </p>
+
+          <div className="premium-modal__amount-pill">
+            <PremiumIcon
+              name="wallet"
+              className="premium-modal__icon premium-modal__icon--wallet"
+            />
+            <span className="premium-modal__amount-pill-text">
+              {selectedAmountDisplay}
+            </span>
+          </div>
+        </div>
+      )
+    }
+
+    if (step === 5) {
+      return (
         <div className="premium-modal__result-wrap">
           <div className="premium-modal__success-icon-halo">
             <div className="premium-modal__success-icon-circle">
@@ -868,6 +1010,9 @@ export function PremiumModal({
             Sasa unaweza kutazama channel zote live muda wote. Kumbuka kulipia
             kifurushi chako kabla ya muda kuisha.
           </p>
+          {continueError ? (
+            <p className="premium-modal__error">{continueError}</p>
+          ) : null}
 
           <button
             type="button"
@@ -904,7 +1049,9 @@ export function PremiumModal({
           onClick={handleRetry}
         >
           <span className="premium-modal__cta-gradient">
-            <span className="premium-modal__cta-text">JARIBU TENA</span>
+            <span className="premium-modal__cta-text">
+              {failureKind === 'verification' ? 'THIBITISHA TENA' : 'JARIBU TENA'}
+            </span>
           </span>
         </button>
 

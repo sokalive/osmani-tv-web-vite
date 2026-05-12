@@ -130,7 +130,10 @@ export type PlaybackCandidate = {
   deliveryPath: string
   streamProxy: string
   usesBackendDelivery: boolean
+  /** True when the resolved URL targets an HLS manifest (.m3u8 / .m3u, including inside `?url=`). */
   isDirectManifest: boolean
+  /** True for gateway/HTML player pages (e.g. player.php) — use iframe shell instead of Hls.js. */
+  embedPlayback: boolean
 }
 
 export type PlaybackReadiness =

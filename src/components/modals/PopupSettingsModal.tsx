@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 import type { PopupSettings } from '../../types/osmani'
 
 const STORAGE_KEY = 'osmani_popup_settings_seen'
@@ -53,6 +54,8 @@ export function PopupSettingsModal({ settings }: PopupSettingsModalProps) {
 
     return window.localStorage.getItem(STORAGE_KEY) !== '1'
   }, [dismissed, settings])
+
+  useBodyScrollLock(Boolean(settings) && visible)
 
   if (!settings || !visible) {
     return null

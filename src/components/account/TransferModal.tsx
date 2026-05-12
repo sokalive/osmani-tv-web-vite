@@ -5,6 +5,7 @@ import {
   redeemTransfer,
 } from '../../services/api/subscriptionService'
 import { getDeviceIdentity } from '../../services/auth/deviceIdentity'
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 
 type TransferModalProps = {
   visible: boolean
@@ -200,6 +201,8 @@ export function TransferModal({
   onTransferSuccess,
   initialStep = 'intro',
 }: TransferModalProps) {
+  useBodyScrollLock(visible)
+
   const [step, setStep] = useState<
     'intro' | 'phone' | 'generated' | 'redeem' | 'waiting' | 'redeemed' | 'rejected'
   >(initialStep)

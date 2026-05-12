@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock'
 
 type ManualSubscriptionGiftModalProps = {
   visible: boolean
@@ -15,18 +15,7 @@ export function ManualSubscriptionGiftModal({
   busy = false,
   onAcknowledge,
 }: ManualSubscriptionGiftModalProps) {
-  useEffect(() => {
-    if (!visible || typeof document === 'undefined') {
-      return
-    }
-
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
-  }, [visible])
+  useBodyScrollLock(visible)
 
   if (!visible) {
     return null

@@ -10,6 +10,9 @@ import { osmaniAdminPaymentClient } from './osmaniAdminPaymentClient'
 
 type PlainObject = Record<string, unknown>
 
+const SUBSCRIPTION_REQUEST_TIMEOUT_MS = 12000
+const PAYMENT_REQUEST_TIMEOUT_MS = 15000
+
 function isPlainObject(value: unknown): value is PlainObject {
   return value != null && typeof value === 'object' && !Array.isArray(value)
 }
@@ -583,6 +586,7 @@ export async function verifySubscription(
   const payload = await osmaniAdminPaymentClient.post<unknown>(
     '/api/subscription/verify',
     withFingerprintAliases(deviceId, deviceFingerprint),
+    { timeoutMs: SUBSCRIPTION_REQUEST_TIMEOUT_MS },
   )
 
   return normalizeVerifyResponse(payload)
@@ -591,6 +595,7 @@ export async function verifySubscription(
 export async function fetchSubscriptionStatus(deviceId: string) {
   const payload = await osmaniAdminPaymentClient.get<unknown>(
     `/api/subscription-status?device_id=${encodeURIComponent(deviceId)}`,
+    { timeoutMs: SUBSCRIPTION_REQUEST_TIMEOUT_MS },
   )
 
   return normalizeVerifyResponse(payload)
@@ -811,7 +816,8 @@ export async function createPayment({
       amount,
       device_id: deviceId,
       device_fingerprint: deviceFingerprint,
-    })
+      fingerprint: deviceFingerprint,
+    }, { timeoutMs: PAYMENT_REQUEST_TIMEOUT_MS })
   } catch (error) {
     const responseBody =
       error instanceof Error && 'responseBody' in error
@@ -855,6 +861,7 @@ export async function getPaymentStatus(orderId: string) {
   try {
     payload = await osmaniAdminPaymentClient.get<unknown>(
       `/api/payment-status/${encodeURIComponent(orderId)}`,
+      { timeoutMs: PAYMENT_REQUEST_TIMEOUT_MS },
     )
   } catch (error) {
     const status =
@@ -884,6 +891,7 @@ export async function recoverSubscription(
   const payload = await osmaniAdminPaymentClient.post<unknown>(
     '/api/subscription/recover',
     withFingerprintAliases(deviceId, deviceFingerprint),
+    { timeoutMs: SUBSCRIPTION_REQUEST_TIMEOUT_MS },
   )
 
   return normalizeVerifyResponse(payload)
@@ -901,6 +909,7 @@ export async function acknowledgeManualGift(
       manualGiftAckKey: String(manualGiftAckKey).trim(),
       gift_ack_key: String(manualGiftAckKey).trim(),
     }),
+    { timeoutMs: SUBSCRIPTION_REQUEST_TIMEOUT_MS },
   )
 }
 

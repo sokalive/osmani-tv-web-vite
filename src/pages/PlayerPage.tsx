@@ -163,7 +163,6 @@ export function PlayerPage() {
     gateForPlayback,
     requestPremiumGate,
     requestEmergencyModal,
-    subscriptionVersion,
   } = useCatalogOutlet()
   const [retryToken, setRetryToken] = useState(0)
   const [activeSourceIndex, setActiveSourceIndex] = useState(0)
@@ -173,6 +172,7 @@ export function PlayerPage() {
   const [accessChecking, setAccessChecking] = useState(false)
   const [accessDenied, setAccessDenied] = useState(false)
   const [immersiveActive, setImmersiveActive] = useState(() => Boolean(getFullscreenElement()))
+  const [surfaceReady, setSurfaceReady] = useState(false)
   const sessionDeviceIdRef = useRef('')
   const heartbeatRef = useRef<number | null>(null)
   const hideControlsTimerRef = useRef<number | null>(null)
@@ -183,6 +183,13 @@ export function PlayerPage() {
   const freeMode = data?.settings.freeMode ?? false
   const emergencyMode = data?.settings.emergencyMode ?? false
   const androidWebViewRuntime = useMemo(() => isAndroidWebViewRuntime(), [])
+  const isCoarsePointer = useMemo(
+    () =>
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(pointer: coarse)').matches,
+    [],
+  )
 
   const channel = useMemo(() => {
     const channelId = String(params.channelId ?? '').trim()
@@ -199,10 +206,17 @@ export function PlayerPage() {
   }, [data?.channels, params.channelId, selectedChannel])
 
   const activeSource = channel?.playbackCandidates[activeSourceIndex] ?? null
-  const playbackSrc =
-    channel?.playbackReadiness === 'ready' && activeSource
+  const embedPlayback = Boolean(
+    channel?.playbackReadiness === 'ready' && activeSource?.embedPlayback,
+  )
+  const embedSrc =
+    embedPlayback && activeSource ? activeSource.playbackUrl : ''
+  const hlsSrc =
+    !embedPlayback && channel?.playbackReadiness === 'ready' && activeSource
       ? activeSource.playbackUrl
       : ''
+  const [iframeLoaded, setIframeLoaded] = useState(false)
+
   const hasNextPlaybackSource = Boolean(
     channel && activeSourceIndex < channel.playbackCandidates.length - 1,
   )
@@ -221,11 +235,15 @@ export function PlayerPage() {
     play,
     requestFullscreen,
   } = useHlsPlayback({
-    src: playbackSrc,
+    src: hlsSrc,
     autoPlay: true,
     startMuted: true,
     retryToken,
   })
+
+  useEffect(() => {
+    setIframeLoaded(false)
+  }, [embedSrc, activeSourceIndex, channel?.id])
 
   const qualityOptions = useMemo(
     () =>
@@ -260,29 +278,40 @@ export function PlayerPage() {
     languageOptions.find((option) => option.selected)?.label || 'Lugha'
 
   const controlsVisible = overlayVisible
-  const showCenterState =
-    status === 'loading' ||
-    status === 'buffering' ||
-    status === 'awaiting-user' ||
-    status === 'error'
-  const centerTitle =
-    status === 'error'
+  const showEmbedLoading = Boolean(embedSrc && !iframeLoaded)
+  const showCenterState = Boolean(
+    showEmbedLoading ||
+      (!embedSrc &&
+        (status === 'loading' ||
+          status === 'buffering' ||
+          status === 'awaiting-user' ||
+          status === 'error')),
+  )
+  const centerTitle = showEmbedLoading
+    ? 'Inapakia kicheza...'
+    : status === 'error'
       ? 'Hitilafu ya uchezi'
-      : status === 'awaiting-user'
-        ? 'Gusa ili uanze'
-        : 'Inapakia moja kwa moja...'
-  const centerMessage =
-    status === 'error'
+      : status === 'buffering' && error
+        ? 'Tunarudisha stream...'
+        : status === 'awaiting-user'
+          ? 'Gusa ili uanze'
+          : 'Inapakia moja kwa moja...'
+  const centerMessage = showEmbedLoading
+    ? channel?.playbackMessage ||
+      'Kicheza cha ndani kinapakia. Gusa ndani ya skrini ukitumia chaguo za mtoaji.'
+    : status === 'error'
       ? error || channel?.playbackMessage
       : status === 'buffering'
-        ? activeSourceIndex > 0
-          ? `${currentSourceLabel} inabuffer stream ya moja kwa moja...`
-          : 'Inabuffer stream ya moja kwa moja...'
+        ? error ||
+          (activeSourceIndex > 0
+            ? `${currentSourceLabel} inabuffer stream ya moja kwa moja...`
+            : 'Inabuffer stream ya moja kwa moja...')
         : status === 'loading'
-          ? activeSourceIndex > 0
-            ? `${currentSourceLabel} inaunganishwa...`
-            : channel?.playbackMessage
-        : channel?.playbackMessage
+          ? error ||
+            (activeSourceIndex > 0
+              ? `${currentSourceLabel} inaunganishwa...`
+              : channel?.playbackMessage)
+          : channel?.playbackMessage
 
   const clearHideControlsTimer = useCallback(() => {
     if (hideControlsTimerRef.current != null) {
@@ -293,21 +322,26 @@ export function PlayerPage() {
 
   const startHideControlsTimer = useCallback(() => {
     clearHideControlsTimer()
+    const hideMs = isCoarsePointer ? 4500 : 3000
     hideControlsTimerRef.current = window.setTimeout(() => {
       setOverlayVisible(false)
-    }, 3000)
-  }, [clearHideControlsTimer])
+    }, hideMs)
+  }, [clearHideControlsTimer, isCoarsePointer])
+
+  const canAutoHideControls = Boolean(
+    (embedPlayback && iframeLoaded) || status === 'playing',
+  )
 
   const showControls = useCallback(() => {
     setOverlayVisible(true)
 
-    if (pickerKind || status !== 'playing') {
+    if (pickerKind || !canAutoHideControls) {
       clearHideControlsTimer()
       return
     }
 
     startHideControlsTimer()
-  }, [clearHideControlsTimer, pickerKind, startHideControlsTimer, status])
+  }, [canAutoHideControls, clearHideControlsTimer, pickerKind, startHideControlsTimer])
 
   const lockLandscape = useCallback(async () => {
     if (typeof window === 'undefined') {
@@ -454,7 +488,18 @@ export function PlayerPage() {
     playStartedImmersiveRetryRef.current = false
     clearHideControlsTimer()
     setOverlayVisible(true)
-  }, [channel?.id, clearHideControlsTimer, playbackSrc])
+  }, [channel?.id, clearHideControlsTimer, embedSrc, hlsSrc])
+
+  useEffect(() => {
+    setSurfaceReady(false)
+    const frame = window.requestAnimationFrame(() => {
+      setSurfaceReady(true)
+    })
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+    }
+  }, [accessChecking, accessDenied, channel?.id, embedSrc, hlsSrc])
 
   useEffect(() => {
     if (status !== 'error' || !channel || !activeSource || !hasNextPlaybackSource) {
@@ -524,7 +569,6 @@ export function PlayerPage() {
     gateForPlayback,
     navigate,
     requestPremiumGate,
-    subscriptionVersion,
   ])
 
   useEffect(() => {
@@ -666,7 +710,7 @@ export function PlayerPage() {
   useEffect(() => {
     clearHideControlsTimer()
 
-    if (pickerKind || status !== 'playing') {
+    if (pickerKind || !canAutoHideControls) {
       setOverlayVisible(true)
       return
     }
@@ -677,14 +721,23 @@ export function PlayerPage() {
     return () => {
       clearHideControlsTimer()
     }
-  }, [clearHideControlsTimer, pickerKind, startHideControlsTimer, status])
+  }, [
+    canAutoHideControls,
+    clearHideControlsTimer,
+    pickerKind,
+    startHideControlsTimer,
+  ])
 
   useEffect(() => {
-    if (!channel || accessChecking || accessDenied || !playbackSrc) {
+    if (!channel || accessChecking || accessDenied || (!hlsSrc && !embedSrc)) {
       return
     }
 
-    if (status === 'idle' || status === 'loading') {
+    if (embedSrc) {
+      if (!iframeLoaded) {
+        return
+      }
+    } else if (status === 'idle' || status === 'loading') {
       return
     }
 
@@ -706,12 +759,18 @@ export function PlayerPage() {
     accessDenied,
     androidWebViewRuntime,
     channel,
+    embedSrc,
     enterImmersivePlayback,
-    playbackSrc,
+    hlsSrc,
+    iframeLoaded,
     status,
   ])
 
   useEffect(() => {
+    if (embedSrc) {
+      return
+    }
+
     if (status !== 'playing' || immersiveActive) {
       return
     }
@@ -722,7 +781,7 @@ export function PlayerPage() {
 
     playStartedImmersiveRetryRef.current = true
     void enterImmersivePlayback()
-  }, [enterImmersivePlayback, immersiveActive, status])
+  }, [embedSrc, enterImmersivePlayback, immersiveActive, status])
 
   useEffect(
     () => () => {
@@ -780,10 +839,19 @@ export function PlayerPage() {
   }
 
   return (
-    <section className="player-screen">
+    <section className={`player-screen${immersiveActive ? ' player-screen--immersive' : ''}`}>
       <div
         ref={surfaceRef}
-        className="player-screen__surface"
+        className={`player-screen__surface${
+          embedSrc ? ' player-screen__surface--embed' : ''
+        }${immersiveActive ? ' player-screen__surface--immersive' : ''}${
+          surfaceReady ? ' player-screen__surface--ready' : ''
+        }`}
+        onPointerDown={() => {
+          if (!pickerKind) {
+            setOverlayVisible(true)
+          }
+        }}
         onClick={() => {
           if (!immersiveActive) {
             void enterImmersivePlayback()
@@ -793,9 +861,31 @@ export function PlayerPage() {
           }
         }}
       >
+        {embedSrc ? (
+          <div
+            className={`player-screen__embed-wrap player-screen__embed-wrap--${fitMode}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <iframe
+              key={embedSrc}
+              title={channel.name}
+              className="player-screen__embed"
+              src={embedSrc}
+              allow="autoplay; fullscreen; picture-in-picture; encrypted-media; clipboard-read; clipboard-write; display-capture"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups-to-escape-sandbox"
+              referrerPolicy="no-referrer-when-downgrade"
+              loading="eager"
+              onLoad={() => {
+                setIframeLoaded(true)
+              }}
+            />
+          </div>
+        ) : null}
         <video
           ref={videoRef}
-          className={`player-screen__video player-screen__video--${fitMode}`}
+          className={`player-screen__video player-screen__video--${fitMode}${
+            embedSrc ? ' player-screen__video--hidden' : ''
+          }`}
           muted={isMuted}
           playsInline
         />
@@ -830,7 +920,7 @@ export function PlayerPage() {
               className="player-screen__center-state"
               onClick={(event) => event.stopPropagation()}
             >
-              {status !== 'error' ? (
+              {showEmbedLoading || status !== 'error' ? (
                 <span className="player-screen__status-spinner" aria-hidden="true" />
               ) : null}
               <strong>{centerTitle}</strong>
@@ -856,6 +946,10 @@ export function PlayerPage() {
               className="player-action"
               onClick={() => {
                 showControls()
+                if (embedSrc) {
+                  void enterImmersivePlayback()
+                  return
+                }
                 if (status !== 'playing') {
                   void play()
                   void enterImmersivePlayback()
@@ -866,38 +960,44 @@ export function PlayerPage() {
               }}
             >
               <span className="player-action__icon">
-                <PlayerActionIcon kind={status === 'playing' ? 'pause' : 'play'} />
+                <PlayerActionIcon
+                  kind={embedSrc ? 'fullscreen' : status === 'playing' ? 'pause' : 'play'}
+                />
               </span>
               <span className="player-action__label">
-                {status === 'playing' ? 'Pause' : 'Play'}
+                {embedSrc ? 'Skrini nzima' : status === 'playing' ? 'Pause' : 'Play'}
               </span>
             </button>
-            <button
-              type="button"
-              className="player-action"
-              onClick={() => {
-                showControls()
-                setPickerKind('language')
-              }}
-            >
-              <span className="player-action__icon">
-                <PlayerActionIcon kind="language" />
-              </span>
-              <span className="player-action__label">{selectedLanguageLabel}</span>
-            </button>
-            <button
-              type="button"
-              className="player-action"
-              onClick={() => {
-                showControls()
-                setPickerKind('quality')
-              }}
-            >
-              <span className="player-action__icon">
-                <PlayerActionIcon kind="quality" />
-              </span>
-              <span className="player-action__label">{selectedQualityLabel}</span>
-            </button>
+            {!embedSrc ? (
+              <button
+                type="button"
+                className="player-action"
+                onClick={() => {
+                  showControls()
+                  setPickerKind('language')
+                }}
+              >
+                <span className="player-action__icon">
+                  <PlayerActionIcon kind="language" />
+                </span>
+                <span className="player-action__label">{selectedLanguageLabel}</span>
+              </button>
+            ) : null}
+            {!embedSrc ? (
+              <button
+                type="button"
+                className="player-action"
+                onClick={() => {
+                  showControls()
+                  setPickerKind('quality')
+                }}
+              >
+                <span className="player-action__icon">
+                  <PlayerActionIcon kind="quality" />
+                </span>
+                <span className="player-action__label">{selectedQualityLabel}</span>
+              </button>
+            ) : null}
             <button
               type="button"
               className="player-action"
