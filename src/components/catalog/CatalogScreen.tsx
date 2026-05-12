@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useCatalogOutlet } from '../../app/catalogOutlet'
 import { ChannelCard } from '../channels/ChannelCard'
 import { HeroCarousel } from '../home/HeroCarousel'
+import { OtaDebugTitleTap } from '../modals/OtaDebugOverlay'
 import type { ChannelViewModel } from '../../types/osmani'
 import {
   categoryRouteMatches,
@@ -10,6 +11,37 @@ import {
   matchesHomeFilter,
   type HomeFilter,
 } from '../../lib/channelUi'
+
+const MAINTENANCE_USER_MESSAGE =
+  'Habari, kuna marekebisho yanaendelea ndani ya app kwa muda mfupi. Tafadhali subiri.'
+
+function MaintenanceIcon() {
+  return (
+    <svg
+      className="maintenance-home__icon"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <path
+        d="M14.7 6.3a4.6 4.6 0 0 0 3.9 6.7c.4 0 .8-.1 1.2-.2l-6.5 6.5a1.6 1.6 0 1 1-2.3-2.3l6.5-6.5c-.1.4-.2.8-.2 1.2a4.6 4.6 0 0 1-6.7-3.9l2.6 1 1.4-1.4-1-2.6a4.6 4.6 0 0 1 1.1-4.8Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+function MaintenanceHomeCentered() {
+  return (
+    <div className="maintenance-home" role="status" aria-live="polite">
+      <MaintenanceIcon />
+      <p className="maintenance-home__message">{MAINTENANCE_USER_MESSAGE}</p>
+    </div>
+  )
+}
 
 type CatalogScreenProps = {
   title: string
@@ -27,6 +59,7 @@ export function CatalogScreen({
   const navigate = useNavigate()
   const { data, loading, error, selectChannel, reload } = useCatalogOutlet()
   const [selectedFilter, setSelectedFilter] = useState<HomeFilter>('Zote')
+  const maintenanceMode = data?.settings.maintenanceMode ?? false
 
   const channels = useMemo(() => {
     const rows = data?.channels ?? []
@@ -57,7 +90,13 @@ export function CatalogScreen({
       <header className="catalog-screen__header">
         <div className="catalog-screen__brand-row">
           <div>
-            <h1>{title}</h1>
+            {mode === 'home' ? (
+              <OtaDebugTitleTap>
+                <h1>{title}</h1>
+              </OtaDebugTitleTap>
+            ) : (
+              <h1>{title}</h1>
+            )}
             <p className="catalog-screen__subtitle">{subtitle}</p>
           </div>
 
@@ -114,7 +153,11 @@ export function CatalogScreen({
         </div>
       </header>
 
-      {loading && channels.length === 0 ? (
+      {maintenanceMode ? (
+        <div className="maintenance-home__wrap">
+          <MaintenanceHomeCentered />
+        </div>
+      ) : loading && channels.length === 0 ? (
         <div className="catalog-grid catalog-grid--loading">
           {Array.from({ length: 4 }).map((_, index) => (
             <div className="catalog-card catalog-card--skeleton" key={index}>

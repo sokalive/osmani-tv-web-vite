@@ -7,6 +7,33 @@ type PopupSettingsModalProps = {
   settings: PopupSettings | null
 }
 
+function InfoIcon() {
+  return (
+    <svg
+      className="popup-modal__icon-svg"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle
+        cx="12"
+        cy="12"
+        r="9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M12 10.25v5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="7.2" r="1.15" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function PopupSettingsModal({ settings }: PopupSettingsModalProps) {
   const [dismissed, setDismissed] = useState(false)
 
@@ -31,54 +58,71 @@ export function PopupSettingsModal({ settings }: PopupSettingsModalProps) {
     return null
   }
 
+  const close = () => {
+    if (settings.mode === 'show_once') {
+      window.localStorage.setItem(STORAGE_KEY, '1')
+    }
+    setDismissed(true)
+  }
+
   return (
     <div className="popup-modal" role="dialog" aria-modal="true">
       <button
         type="button"
         className="popup-modal__backdrop"
         aria-label="Close popup"
-        onClick={() => {
-          if (settings.mode === 'show_once') {
-            window.localStorage.setItem(STORAGE_KEY, '1')
-          }
-          setDismissed(true)
-        }}
+        onClick={close}
       />
       <div className="popup-modal__card">
-        <div className="popup-modal__icon">!</div>
-        {settings.title ? <h2>{settings.title}</h2> : null}
-        {settings.greeting ? <p className="popup-modal__greeting">{settings.greeting}</p> : null}
+        <div className="popup-modal__icon-wrap">
+          <InfoIcon />
+        </div>
 
-        {bulletPoints.length ? (
-          <div className="popup-modal__bullets">
-            {bulletPoints.map((point) => (
-              <div key={point} className="popup-modal__bullet">
-                <span>&bull;</span>
-                <p>{point}</p>
+        <div className="popup-modal__scroll">
+          <div className="popup-modal__scroll-inner">
+            {settings.title ? (
+              <h2 className="popup-modal__title">{settings.title}</h2>
+            ) : null}
+            {settings.greeting ? (
+              <p className="popup-modal__greeting">{settings.greeting}</p>
+            ) : null}
+
+            {bulletPoints.length ? (
+              <div className="popup-modal__bullets">
+                {bulletPoints.map((point, index) => (
+                  <div
+                    key={`${index}-${point}`}
+                    className="popup-modal__bullet-row"
+                  >
+                    <span className="popup-modal__bullet-dot">&bull;</span>
+                    <p className="popup-modal__bullet-text">{point}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : null}
+            ) : null}
 
-        {settings.disclaimer ? (
-          <div className="popup-modal__disclaimer">
-            <strong>Tahadhari</strong>
-            <p>{settings.disclaimer}</p>
+            {settings.disclaimer ? (
+              <div className="popup-modal__disclaimer">
+                <strong className="popup-modal__disclaimer-title">
+                  Tahadhari
+                </strong>
+                <p className="popup-modal__disclaimer-body">
+                  {settings.disclaimer}
+                </p>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        </div>
 
-        <button
-          type="button"
-          className="popup-modal__button"
-          onClick={() => {
-            if (settings.mode === 'show_once') {
-              window.localStorage.setItem(STORAGE_KEY, '1')
-            }
-            setDismissed(true)
-          }}
-        >
-          Sawa
-        </button>
+        <div className="popup-modal__footer">
+          <button
+            type="button"
+            className="popup-modal__button"
+            onClick={close}
+          >
+            Sawa
+          </button>
+        </div>
       </div>
     </div>
   )

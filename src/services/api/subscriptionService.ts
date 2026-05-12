@@ -594,6 +594,16 @@ export async function initiateTransfer(
   }
 }
 
+export async function respondToTransfer(
+  code: string,
+  decision: 'approve' | 'reject',
+) {
+  await osmaniAdminClient.post<unknown>('/api/transfer/respond', {
+    code: String(code || '').trim(),
+    decision,
+  })
+}
+
 export async function redeemTransfer(
   code: string,
   deviceId: string,

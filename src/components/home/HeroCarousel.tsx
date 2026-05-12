@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type UIEvent,
+} from 'react'
 import type { BannerRecord, ChannelViewModel } from '../../types/osmani'
 
 type HeroCarouselProps = {
@@ -9,27 +16,109 @@ type HeroCarouselProps = {
 
 const AUTO_ADVANCE_MS = 5000
 
+function formatCountdownClock(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(
+    seconds,
+  ).padStart(2, '0')}`
+}
+
+type HeroSlideProps = {
+  active: boolean
+  channel: ChannelViewModel | null
+  countdownLabel: string | null
+  onSelectChannel: (channel: ChannelViewModel) => void
+  slide: BannerRecord
+}
+
+function HeroSlide({
+  active,
+  channel,
+  countdownLabel,
+  onSelectChannel,
+  slide,
+}: HeroSlideProps) {
+  const [imageFailed, setImageFailed] = useState(false)
+
+  const content = (
+    <>
+      {!imageFailed && slide.imageUrl ? (
+        <img
+          src={slide.imageUrl}
+          alt={slide.title}
+          loading={active ? 'eager' : 'lazy'}
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <div className="hero-carousel__fallback" aria-hidden="true" />
+      )}
+
+      <div className="hero-carousel__scrim" aria-hidden="true" />
+
+      <div className="hero-carousel__overlay">
+        {countdownLabel ? (
+          <span className="hero-carousel__countdown">{countdownLabel}</span>
+        ) : null}
+        {slide.badgeEnabled && slide.badge ? (
+          <span
+            className={`hero-carousel__badge${
+              slide.badgeBlink ? ' hero-carousel__badge--blink' : ''
+            }`}
+            style={{ backgroundColor: slide.badgeColor }}
+          >
+            {slide.badge}
+          </span>
+        ) : null}
+        <h2>{slide.title}</h2>
+        {slide.description ? <p>{slide.description}</p> : null}
+      </div>
+    </>
+  )
+
+  if (!channel) {
+    return <div className="hero-carousel__slide">{content}</div>
+  }
+
+  return (
+    <button
+      type="button"
+      className="hero-carousel__slide hero-carousel__slide--pressable"
+      onClick={() => onSelectChannel(channel)}
+    >
+      {content}
+    </button>
+  )
+}
+
 export function HeroCarousel({
   slides,
   channels,
   onSelectChannel,
 }: HeroCarouselProps) {
+  const viewportRef = useRef<HTMLDivElement | null>(null)
+  const draggingRef = useRef(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const safeIndex = slides.length ? activeIndex % slides.length : 0
+  const safeIndex = slides.length ? Math.min(activeIndex, slides.length - 1) : 0
+
+  const channelById = useMemo(
+    () => new Map(channels.map((channel) => [channel.id, channel])),
+    [channels],
+  )
 
   useEffect(() => {
-    if (slides.length <= 1) {
+    queueMicrotask(() => {
+      setActiveIndex(0)
+    })
+
+    if (!viewportRef.current) {
       return
     }
 
-    const timer = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % slides.length)
-    }, AUTO_ADVANCE_MS)
-
-    return () => {
-      window.clearInterval(timer)
-    }
+    viewportRef.current.scrollTo({ left: 0, behavior: 'auto' })
   }, [slides.length])
 
   useEffect(() => {
@@ -43,39 +132,93 @@ export function HeroCarousel({
     }
   }, [slides])
 
-  const activeSlide = slides[safeIndex] ?? null
-  const activeChannel = useMemo(() => {
-    if (!activeSlide?.redirectChannelId) {
-      return null
+  const countdownLabels = useMemo(
+    () =>
+      slides.map((slide) => {
+        if (!slide.enableCountdown || !slide.eventEnd) {
+          return null
+        }
+
+        const endMs = Date.parse(slide.eventEnd)
+        if (Number.isNaN(endMs) || endMs <= nowMs) {
+          return null
+        }
+
+        const remaining = Math.max(0, Math.floor((endMs - nowMs) / 1000))
+        return `Ends in ${formatCountdownClock(remaining)}`
+      }),
+    [nowMs, slides],
+  )
+
+  const syncToIndex = useCallback(
+    (nextIndex: number, behavior: ScrollBehavior) => {
+      const viewport = viewportRef.current
+      if (!viewport) {
+        return
+      }
+
+      const clamped = Math.max(0, Math.min(nextIndex, slides.length - 1))
+      viewport.scrollTo({
+        left: viewport.clientWidth * clamped,
+        behavior,
+      })
+    },
+    [slides.length],
+  )
+
+  useEffect(() => {
+    if (slides.length <= 1) {
+      return
     }
 
-    return (
-      channels.find((channel) => channel.id === activeSlide.redirectChannelId) || null
-    )
-  }, [activeSlide, channels])
+    const timer = window.setInterval(() => {
+      if (draggingRef.current) {
+        return
+      }
 
-  const countdownLabel = useMemo(() => {
-    if (!activeSlide?.enableCountdown || !activeSlide.eventEnd) {
-      return null
+      setActiveIndex((current) => {
+        const next = (current + 1) % slides.length
+        syncToIndex(next, 'smooth')
+        return next
+      })
+    }, AUTO_ADVANCE_MS)
+
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [slides.length, syncToIndex])
+
+  useEffect(() => {
+    const viewport = viewportRef.current
+    if (!viewport || typeof ResizeObserver === 'undefined') {
+      return
     }
 
-    const endMs = Date.parse(activeSlide.eventEnd)
-    if (Number.isNaN(endMs) || endMs <= nowMs) {
-      return null
+    const observer = new ResizeObserver(() => {
+      syncToIndex(safeIndex, 'auto')
+    })
+
+    observer.observe(viewport)
+    return () => {
+      observer.disconnect()
     }
+  }, [safeIndex, syncToIndex])
 
-    const remaining = Math.max(0, Math.floor((endMs - nowMs) / 1000))
-    const hours = Math.floor(remaining / 3600)
-    const minutes = Math.floor((remaining % 3600) / 60)
-    const seconds = remaining % 60
+  const handleScroll = useCallback(
+    (event: UIEvent<HTMLDivElement>) => {
+      const viewport = event.currentTarget
+      const width = viewport.clientWidth || 1
+      const next = Math.max(
+        0,
+        Math.min(slides.length - 1, Math.round(viewport.scrollLeft / width)),
+      )
 
-    return `Ends in ${String(hours).padStart(2, '0')}:${String(minutes).padStart(
-      2,
-      '0',
-    )}:${String(seconds).padStart(2, '0')}`
-  }, [activeSlide, nowMs])
+      setActiveIndex((current) => (current === next ? current : next))
+    },
+    [slides.length],
+  )
 
-  if (!activeSlide) {
+  if (!slides.length) {
     return (
       <div className="hero-carousel hero-carousel--empty">
         <div className="hero-carousel__skeleton" />
@@ -90,42 +233,42 @@ export function HeroCarousel({
 
   return (
     <section className="hero-carousel">
-      <button
-        type="button"
-        className="hero-carousel__slide"
-        onClick={() => {
-          if (activeChannel) {
-            onSelectChannel(activeChannel)
-          }
+      <div
+        ref={viewportRef}
+        className="hero-carousel__viewport"
+        onScroll={handleScroll}
+        onPointerDown={() => {
+          draggingRef.current = true
+        }}
+        onPointerUp={() => {
+          draggingRef.current = false
+        }}
+        onPointerCancel={() => {
+          draggingRef.current = false
+        }}
+        onPointerLeave={() => {
+          draggingRef.current = false
         }}
       >
-        {activeSlide.imageUrl ? (
-          <img src={activeSlide.imageUrl} alt={activeSlide.title} />
-        ) : (
-          <div className="hero-carousel__fallback" />
-        )}
-
-        <div className="hero-carousel__overlay">
-          {countdownLabel ? (
-            <span className="hero-carousel__countdown">{countdownLabel}</span>
-          ) : null}
-          {activeSlide.badgeEnabled && activeSlide.badge ? (
-            <span
-              className={`hero-carousel__badge${
-                activeSlide.badgeBlink ? ' hero-carousel__badge--blink' : ''
-              }`}
-              style={{ backgroundColor: activeSlide.badgeColor }}
-            >
-              {activeSlide.badge}
-            </span>
-          ) : null}
-          <h2>{activeSlide.title}</h2>
-          {activeSlide.description ? <p>{activeSlide.description}</p> : null}
-          {activeChannel ? (
-            <span className="hero-carousel__cta">Open {activeChannel.name}</span>
-          ) : null}
-        </div>
-      </button>
+        {slides.map((slide, index) => (
+          <div
+            className="hero-carousel__slide-touch"
+            key={`${slide.id}:${slide.imageUrl ?? ''}`}
+          >
+            <HeroSlide
+              active={index === safeIndex}
+              channel={
+                slide.redirectChannelId
+                  ? channelById.get(slide.redirectChannelId) || null
+                  : null
+              }
+              countdownLabel={countdownLabels[index] ?? null}
+              onSelectChannel={onSelectChannel}
+              slide={slide}
+            />
+          </div>
+        ))}
+      </div>
 
       {slides.length > 1 ? (
         <div className="hero-carousel__dots" aria-label="Hero slides">
@@ -136,7 +279,10 @@ export function HeroCarousel({
               className={`hero-carousel__dot${
                 index === safeIndex ? ' hero-carousel__dot--active' : ''
               }`}
-              onClick={() => setActiveIndex(index)}
+              onClick={() => {
+                setActiveIndex(index)
+                syncToIndex(index, 'smooth')
+              }}
               aria-label={`Go to slide ${index + 1}`}
             />
           ))}

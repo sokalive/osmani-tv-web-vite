@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useCatalogOutlet } from '../app/catalogOutlet'
 import { PremiumModal } from '../components/account/PremiumModal'
 import { TransferModal } from '../components/account/TransferModal'
@@ -89,9 +89,15 @@ function StatCard({ icon, value, label }: StatCardProps) {
 
 export function AccountPage() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { data } = useCatalogOutlet()
-  const [transferModalVisible, setTransferModalVisible] = useState(false)
-  const [premiumModalVisible, setPremiumModalVisible] = useState(false)
+  const routeState = location.state as
+    | { openPremiumModal?: boolean; openTransferRecover?: boolean }
+    | null
+  const openPremiumModalOnLoad = Boolean(routeState?.openPremiumModal)
+  const openTransferRecoverOnLoad = Boolean(routeState?.openTransferRecover)
+  const [transferModalVisible, setTransferModalVisible] = useState(openTransferRecoverOnLoad)
+  const [premiumModalVisible, setPremiumModalVisible] = useState(openPremiumModalOnLoad)
   const [offerCodeInput, setOfferCodeInput] = useState('')
   const [redeemBusy, setRedeemBusy] = useState(false)
   const [cooldownEndMs, setCooldownEndMs] = useState<number | null>(null)
@@ -133,6 +139,16 @@ export function AccountPage() {
       }),
     [subscription, tickNowMs],
   )
+
+  useEffect(() => {
+    if (!openPremiumModalOnLoad && !openTransferRecoverOnLoad) {
+      return
+    }
+
+    queueMicrotask(() => {
+      navigate('/account', { replace: true })
+    })
+  }, [navigate, openPremiumModalOnLoad, openTransferRecoverOnLoad])
 
   useEffect(() => {
     if (!isSubscribed) {
@@ -509,6 +525,7 @@ export function AccountPage() {
           visible={transferModalVisible}
           onClose={() => setTransferModalVisible(false)}
           onTransferSuccess={loadAccount}
+          initialStep={openTransferRecoverOnLoad ? 'redeem' : 'intro'}
         />
       ) : null}
       {premiumModalVisible ? (
