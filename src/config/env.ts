@@ -35,7 +35,7 @@ export const env = {
     '/api/popup-settings',
   whatsappSettingsPath:
     import.meta.env.VITE_WHATSAPP_SETTINGS_API_PATH?.trim() ||
-    '/api/whatsapp-settings',
+    '/api/settings/whatsapp',
   legacyApiHealthPath:
     import.meta.env.VITE_OSMANI_TV_HEALTH_PATH?.trim() || '/api',
   updatePackageName:

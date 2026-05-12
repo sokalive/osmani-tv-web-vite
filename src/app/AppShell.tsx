@@ -44,7 +44,6 @@ import type {
 
 const MANUAL_GIFT_ACK_STORAGE_KEY = 'osmani:manual_gift_ack_key'
 const SUBSCRIPTION_EXPIRY_REMINDER_STORAGE_KEY = 'osmani:expiry_reminder_dismissed_key'
-const SETTINGS_POLL_MS = 2500
 const SUBSCRIPTION_SYNC_MS = 15000
 
 function pickString(...values: unknown[]) {
@@ -499,38 +498,6 @@ export function AppShell() {
   }, [subscription, subscriptionVersion])
 
   useEffect(() => {
-    if (typeof window === 'undefined' || typeof document === 'undefined') {
-      return
-    }
-
-    const refreshSettings = () => {
-      void catalog.refreshSettingsOnly()
-    }
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        refreshSettings()
-      }
-    }
-
-    const interval = window.setInterval(() => {
-      if (document.visibilityState !== 'hidden') {
-        refreshSettings()
-      }
-    }, SETTINGS_POLL_MS)
-
-    window.addEventListener('focus', refreshSettings)
-    window.addEventListener('pageshow', refreshSettings)
-    document.addEventListener('visibilitychange', onVisibilityChange)
-
-    return () => {
-      window.clearInterval(interval)
-      window.removeEventListener('focus', refreshSettings)
-      window.removeEventListener('pageshow', refreshSettings)
-      document.removeEventListener('visibilitychange', onVisibilityChange)
-    }
-  }, [catalog.refreshSettingsOnly])
-
-  useEffect(() => {
     if (!blockedPaused || location.pathname === '/account') {
       return
     }
@@ -583,15 +550,12 @@ export function AppShell() {
         setBlockedReasonHint('revoked')
         void refreshSubscription('sse:subscription-revoked')
       }),
-      subscribeRealtimeEvent('app_settings_changed', () => {
-        void catalog.refreshSettingsOnly()
-      }),
     ]
 
     return () => {
       subscriptions.forEach((unsubscribe) => unsubscribe())
     }
-  }, [catalog.refreshSettingsOnly, refreshSubscription])
+  }, [refreshSubscription])
 
   const handleAcknowledgeManualGift = useCallback(async () => {
     if (!manualGiftAckKey) {

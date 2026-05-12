@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { env } from '../config/env'
 import { pickDefaultChannel } from '../lib/catalog'
-import type { CatalogBootstrap, ChannelViewModel } from '../types/osmani'
+import type {
+  AppModeSettings,
+  CatalogBootstrap,
+  ChannelViewModel,
+  WhatsappSettings,
+} from '../types/osmani'
 import {
-  fetchAppSettings,
   fetchBanners,
   fetchCategories,
   fetchChannels,
-  fetchPopupSettings,
   fetchServerHealth,
   fetchWhatsappSettings,
 } from '../services/api/osmaniAdminService'
@@ -33,6 +36,11 @@ const HIDDEN_REVALIDATE_MS = 45000
 const PLAYER_ROUTE_REVALIDATE_MS = 60000
 const FOCUS_REVALIDATE_MS = 4000
 const SSE_RELOAD_DEBOUNCE_MS = 500
+const DEFAULT_PUBLIC_SETTINGS: AppModeSettings = {
+  freeMode: false,
+  emergencyMode: false,
+  maintenanceMode: false,
+}
 
 function applyFreeModeToChannels(
   channels: ChannelViewModel[],
@@ -50,16 +58,19 @@ function applyFreeModeToChannels(
 
 async function loadCatalogSnapshot() {
   const serverHealthPromise = fetchServerHealth()
-  const [serverHealth, settings, banners, popupSettings, whatsappSettings, channels] =
-    await Promise.all([
-      serverHealthPromise,
-      fetchAppSettings(),
-      fetchBanners(),
-      fetchPopupSettings(),
-      fetchWhatsappSettings(),
-      serverHealthPromise.then((health) => fetchChannels(health)),
-    ])
+  const bannersPromise = fetchBanners().catch(() => [])
+  const whatsappSettingsPromise =
+    /(?:^|\/)api\/settings\/whatsapp(?:$|[/?#])/i.test(env.whatsappSettingsPath)
+      ? fetchWhatsappSettings().catch(() => null as WhatsappSettings | null)
+      : Promise.resolve(null as WhatsappSettings | null)
+  const [serverHealth, banners, whatsappSettings, channels] = await Promise.all([
+    serverHealthPromise,
+    bannersPromise,
+    whatsappSettingsPromise,
+    serverHealthPromise.then((health) => fetchChannels(health)),
+  ])
 
+  const settings = DEFAULT_PUBLIC_SETTINGS
   const effectiveChannels = applyFreeModeToChannels(channels, settings.freeMode)
   const categories = await fetchCategories(effectiveChannels)
 
@@ -69,7 +80,7 @@ async function loadCatalogSnapshot() {
     banners,
     settings,
     serverHealth,
-    popupSettings,
+    popupSettings: null,
     whatsappSettings,
   } satisfies CatalogBootstrap
 }
@@ -186,32 +197,6 @@ export function useCatalogBootstrap({
     },
     [runReload],
   )
-
-  const refreshSettingsOnly = useCallback(async () => {
-    try {
-      const settings = await fetchAppSettings()
-      if (stateRef.current.data?.settings.freeMode !== settings.freeMode) {
-        void runReload({ silent: stateRef.current.data != null })
-        return
-      }
-
-      setState((current) => {
-        if (!current.data) {
-          return current
-        }
-
-        return {
-          ...current,
-          data: {
-            ...current.data,
-            settings,
-          },
-        }
-      })
-    } catch {
-      return
-    }
-  }, [runReload])
 
   const scheduleSilentReload = useCallback(
     (delayMs = SSE_RELOAD_DEBOUNCE_MS) => {
@@ -333,6 +318,5 @@ export function useCatalogBootstrap({
       void runReload({ silent: false })
     },
     reloadIfStale,
-    refreshSettingsOnly,
   }
 }
