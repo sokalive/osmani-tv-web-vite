@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useCatalogOutlet } from '../app/catalogOutlet'
 import { useHlsPlayback } from '../hooks/useHlsPlayback'
@@ -59,6 +59,38 @@ function CloseIcon() {
   )
 }
 
+type FullscreenCapableDocument = Document & {
+  webkitFullscreenElement?: Element | null
+  webkitExitFullscreen?: () => Promise<void> | void
+}
+
+type LockableOrientation = ScreenOrientation & {
+  lock?: (orientation: OrientationLockType) => Promise<void>
+  unlock?: () => void
+}
+
+function getFullscreenElement() {
+  if (typeof document === 'undefined') {
+    return null
+  }
+
+  const doc = document as FullscreenCapableDocument
+  return doc.fullscreenElement ?? doc.webkitFullscreenElement ?? null
+}
+
+function isAndroidWebViewRuntime() {
+  if (typeof navigator === 'undefined') {
+    return false
+  }
+
+  const userAgent = navigator.userAgent || ''
+  return (
+    /Android/i.test(userAgent) &&
+    (/\bwv\b/i.test(userAgent) ||
+      (/Version\/[\d.]+/i.test(userAgent) && /Chrome\/[\d.]+/i.test(userAgent)))
+  )
+}
+
 export function PlayerPage() {
   const navigate = useNavigate()
   const params = useParams()
@@ -75,10 +107,15 @@ export function PlayerPage() {
   const [controlsPinned, setControlsPinned] = useState(true)
   const [accessChecking, setAccessChecking] = useState(false)
   const [accessDenied, setAccessDenied] = useState(false)
+  const [immersiveActive, setImmersiveActive] = useState(() => Boolean(getFullscreenElement()))
   const sessionDeviceIdRef = useRef('')
   const heartbeatRef = useRef<number | null>(null)
+  const surfaceRef = useRef<HTMLDivElement | null>(null)
+  const autoImmersiveAttemptRef = useRef(false)
+  const playStartedImmersiveRetryRef = useRef(false)
   const freeMode = data?.settings.freeMode ?? false
   const emergencyMode = data?.settings.emergencyMode ?? false
+  const androidWebViewRuntime = useMemo(() => isAndroidWebViewRuntime(), [])
 
   const channel = useMemo(() => {
     const channelId = String(params.channelId ?? '').trim()
@@ -169,6 +206,133 @@ export function PlayerPage() {
         ? 'Inabuffer stream ya moja kwa moja...'
         : channel?.playbackMessage
 
+  const lockLandscape = useCallback(async () => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const orientation = window.screen?.orientation as LockableOrientation | undefined
+
+    if (!orientation?.lock) {
+      return
+    }
+
+    try {
+      await orientation.lock('landscape')
+    } catch {}
+  }, [])
+
+  const unlockOrientation = useCallback(() => {
+    if (typeof window === 'undefined') {
+      return
+    }
+
+    const orientation = window.screen?.orientation as LockableOrientation | undefined
+
+    try {
+      orientation?.unlock?.()
+    } catch {}
+  }, [])
+
+  const enterImmersivePlayback = useCallback(async () => {
+    const entered = await requestFullscreen(surfaceRef.current)
+
+    if (!entered) {
+      return false
+    }
+
+    setImmersiveActive(true)
+    setControlsPinned(true)
+    await lockLandscape()
+    return true
+  }, [lockLandscape, requestFullscreen])
+
+  const exitImmersivePlayback = useCallback(async () => {
+    if (typeof document === 'undefined') {
+      unlockOrientation()
+      setImmersiveActive(false)
+      return
+    }
+
+    const doc = document as FullscreenCapableDocument
+
+    try {
+      if (doc.fullscreenElement && doc.exitFullscreen) {
+        await doc.exitFullscreen()
+      } else if (doc.webkitFullscreenElement && doc.webkitExitFullscreen) {
+        await doc.webkitExitFullscreen()
+      }
+    } catch {}
+
+    unlockOrientation()
+    setImmersiveActive(false)
+  }, [unlockOrientation])
+
+  const leavePlayer = useCallback(async () => {
+    await exitImmersivePlayback()
+    navigate(-1)
+  }, [exitImmersivePlayback, navigate])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const body = document.body
+    const root = document.documentElement
+    const previousBodyOverflow = body.style.overflow
+    const previousRootOverflow = root.style.overflow
+    const previousBodyBackground = body.style.background
+    const previousRootBackground = root.style.background
+    const previousBodyOverscroll = body.style.overscrollBehavior
+    const previousRootOverscroll = root.style.overscrollBehavior
+
+    body.style.overflow = 'hidden'
+    root.style.overflow = 'hidden'
+    body.style.background = '#000000'
+    root.style.background = '#000000'
+    body.style.overscrollBehavior = 'none'
+    root.style.overscrollBehavior = 'none'
+
+    return () => {
+      body.style.overflow = previousBodyOverflow
+      root.style.overflow = previousRootOverflow
+      body.style.background = previousBodyBackground
+      root.style.background = previousRootBackground
+      body.style.overscrollBehavior = previousBodyOverscroll
+      root.style.overscrollBehavior = previousRootOverscroll
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof document === 'undefined') {
+      return
+    }
+
+    const syncFullscreenState = () => {
+      const active = Boolean(getFullscreenElement())
+      setImmersiveActive(active)
+      if (!active) {
+        unlockOrientation()
+      }
+    }
+
+    syncFullscreenState()
+    document.addEventListener('fullscreenchange', syncFullscreenState)
+    document.addEventListener('webkitfullscreenchange', syncFullscreenState)
+
+    return () => {
+      document.removeEventListener('fullscreenchange', syncFullscreenState)
+      document.removeEventListener('webkitfullscreenchange', syncFullscreenState)
+    }
+  }, [unlockOrientation])
+
+  useEffect(() => {
+    autoImmersiveAttemptRef.current = false
+    playStartedImmersiveRetryRef.current = false
+    setControlsPinned(true)
+  }, [channel?.id, playbackSrc])
+
   useEffect(() => {
     let cancelled = false
     if (!channel) {
@@ -192,7 +356,9 @@ export function PlayerPage() {
       setAccessChecking(false)
       setAccessDenied(!allowed)
       if (!allowed) {
-        navigate('/account', { state: { openPremiumModal: true } })
+        void exitImmersivePlayback().finally(() => {
+          navigate('/account', { state: { openPremiumModal: true } })
+        })
       }
     })
 
@@ -201,6 +367,7 @@ export function PlayerPage() {
     }
   }, [
     channel,
+    exitImmersivePlayback,
     freeMode,
     gateForPlayback,
     navigate,
@@ -212,9 +379,11 @@ export function PlayerPage() {
       return
     }
 
-    requestEmergencyModal()
-    navigate('/')
-  }, [emergencyMode, navigate, requestEmergencyModal])
+    void exitImmersivePlayback().finally(() => {
+      requestEmergencyModal()
+      navigate('/')
+    })
+  }, [emergencyMode, exitImmersivePlayback, navigate, requestEmergencyModal])
 
   useEffect(() => {
     if (!channel || accessChecking || accessDenied) {
@@ -259,6 +428,58 @@ export function PlayerPage() {
     }
   }, [pickerKind, status])
 
+  useEffect(() => {
+    if (!channel || accessChecking || accessDenied || !playbackSrc) {
+      return
+    }
+
+    if (status === 'idle' || status === 'loading') {
+      return
+    }
+
+    if (autoImmersiveAttemptRef.current) {
+      return
+    }
+
+    autoImmersiveAttemptRef.current = true
+
+    const timer = window.setTimeout(() => {
+      void enterImmersivePlayback()
+    }, androidWebViewRuntime ? 60 : 120)
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [
+    accessChecking,
+    accessDenied,
+    androidWebViewRuntime,
+    channel,
+    enterImmersivePlayback,
+    playbackSrc,
+    status,
+  ])
+
+  useEffect(() => {
+    if (status !== 'playing' || immersiveActive) {
+      return
+    }
+
+    if (playStartedImmersiveRetryRef.current) {
+      return
+    }
+
+    playStartedImmersiveRetryRef.current = true
+    void enterImmersivePlayback()
+  }, [enterImmersivePlayback, immersiveActive, status])
+
+  useEffect(
+    () => () => {
+      void exitImmersivePlayback()
+    },
+    [exitImmersivePlayback],
+  )
+
   if (!channel) {
     return (
       <div className="player-screen player-screen--empty">
@@ -295,8 +516,12 @@ export function PlayerPage() {
   return (
     <section className="player-screen">
       <div
+        ref={surfaceRef}
         className="player-screen__surface"
         onClick={() => {
+          if (!immersiveActive) {
+            void enterImmersivePlayback()
+          }
           if (!pickerKind) {
             setControlsPinned((current) => (controlsVisible ? !current : true))
           }
@@ -318,7 +543,9 @@ export function PlayerPage() {
             <button
               type="button"
               className="player-screen__back"
-              onClick={() => navigate(-1)}
+              onClick={() => {
+                void leavePlayer()
+              }}
               aria-label="Back"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -366,6 +593,7 @@ export function PlayerPage() {
               onClick={() => {
                 if (status !== 'playing') {
                   void play()
+                  void enterImmersivePlayback()
                   return
                 }
 
@@ -412,7 +640,9 @@ export function PlayerPage() {
             <button
               type="button"
               className="player-action"
-              onClick={() => void requestFullscreen()}
+              onClick={() => {
+                void enterImmersivePlayback()
+              }}
             >
               <span className="player-action__icon">
                 <PlayerActionIcon kind="fullscreen" />

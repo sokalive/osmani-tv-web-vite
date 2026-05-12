@@ -30,8 +30,19 @@ type UseHlsPlaybackOptions = {
 }
 
 type FullscreenVideoElement = HTMLVideoElement & {
+  requestFullscreen?: (options?: { navigationUI?: 'auto' | 'hide' | 'show' }) => Promise<void>
   webkitEnterFullscreen?: () => void
   webkitRequestFullscreen?: () => Promise<void>
+}
+
+type FullscreenTargetElement = HTMLElement & {
+  requestFullscreen?: (options?: { navigationUI?: 'auto' | 'hide' | 'show' }) => Promise<void>
+  webkitRequestFullscreen?: () => Promise<void>
+}
+
+type FullscreenCapableDocument = Document & {
+  webkitFullscreenElement?: Element | null
+  webkitExitFullscreen?: () => Promise<void>
 }
 
 const LIVE_HLS_MIME = 'application/vnd.apple.mpegurl'
@@ -164,29 +175,46 @@ export function useHlsPlayback({
     )
   }, [])
 
-  const requestFullscreen = useCallback(async () => {
+  const requestFullscreen = useCallback(async (target?: HTMLElement | null) => {
+    const doc = document as FullscreenCapableDocument
     const video = videoRef.current as FullscreenVideoElement | null
+    const preferredTarget = (target as FullscreenTargetElement | null) ?? video
 
-    if (!video) {
-      return
+    if (!preferredTarget) {
+      return false
     }
 
-    if (document.fullscreenElement) {
-      await document.exitFullscreen()
-      return
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+      return true
     }
 
-    if (video.requestFullscreen) {
-      await video.requestFullscreen()
-      return
+    const fullscreenTargets = [preferredTarget, video].filter(
+      (candidate, index, all): candidate is FullscreenTargetElement | FullscreenVideoElement =>
+        Boolean(candidate) && all.indexOf(candidate) === index,
+    )
+
+    for (const candidate of fullscreenTargets) {
+      try {
+        if (candidate.requestFullscreen) {
+          await candidate.requestFullscreen({ navigationUI: 'hide' })
+          return true
+        }
+      } catch {}
+
+      try {
+        if (candidate.webkitRequestFullscreen) {
+          await candidate.webkitRequestFullscreen()
+          return true
+        }
+      } catch {}
     }
 
-    if (video.webkitRequestFullscreen) {
-      await video.webkitRequestFullscreen()
-      return
+    try {
+      video?.webkitEnterFullscreen?.()
+      return true
+    } catch {
+      return false
     }
-
-    video.webkitEnterFullscreen?.()
   }, [])
 
   const play = useCallback(async () => {
