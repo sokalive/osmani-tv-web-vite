@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { EmergencyModal } from '../components/modals/EmergencyModal'
 import { env } from '../config/env'
@@ -23,12 +23,19 @@ import {
   stopRealtimeSync,
   subscribeRealtimeEvent,
 } from '../services/realtimeSync'
-import { verifySubscription } from '../services/api/subscriptionService'
+import {
+  acknowledgeManualGift,
+  recoverSubscription,
+  verifySubscription,
+} from '../services/api/subscriptionService'
 import { getDeviceIdentity } from '../services/auth/deviceIdentity'
 import { computeSubscriptionProgress } from '../lib/subscriptionMath'
+import type { ChannelViewModel, SubscriptionStatus } from '../types/osmani'
 
 const MANUAL_GIFT_ACK_STORAGE_KEY = 'osmani:manual_gift_ack_key'
 const SUBSCRIPTION_EXPIRY_REMINDER_STORAGE_KEY = 'osmani:expiry_reminder_dismissed_key'
+const SETTINGS_POLL_MS = 2500
+const SUBSCRIPTION_SYNC_MS = 15000
 
 function pickString(...values: unknown[]) {
   for (const value of values) {
@@ -159,19 +166,111 @@ export function AppShell() {
   const [expiryReminderKey, setExpiryReminderKey] = useState<string | null>(null)
   const [expiryReminderDays, setExpiryReminderDays] = useState(1)
   const [emergencyDismissed, setEmergencyDismissed] = useState(false)
+  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null)
+  const [subscriptionVersion, setSubscriptionVersion] = useState(0)
   const [blockedReason, setBlockedReason] = useState<TransferredAwayReason | null>(null)
   const [blockedReasonHint, setBlockedReasonHint] =
     useState<TransferredAwayReason | null>(null)
   const [blockedPaused, setBlockedPaused] = useState(false)
   const [blockedRecovering, setBlockedRecovering] = useState(false)
-  const outletContext: CatalogOutletContext = {
-    data: catalog.data,
-    selectedChannel: catalog.selectedChannel,
-    loading: catalog.loading,
-    error: catalog.error,
-    reload: catalog.reload,
-    selectChannel: catalog.selectChannel,
-  }
+  const isSubscribed = subscription?.active === true
+
+  const refreshSubscription = useCallback(
+    async (
+      _reason = 'manual',
+      options: {
+        recover?: boolean
+      } = {},
+    ) => {
+      try {
+        const { deviceId, deviceFingerprint } = await getDeviceIdentity()
+        if (options.recover) {
+          await recoverSubscription(deviceId, deviceFingerprint).catch(() => null)
+        }
+
+        const next = await verifySubscription(deviceId, deviceFingerprint)
+        setSubscription(next)
+        setSubscriptionVersion((current) => current + 1)
+
+        if (next.active) {
+          setBlockedReasonHint(null)
+          setBlockedReason(null)
+          setBlockedPaused(false)
+          setBlockedRecovering(false)
+        } else if (hasSubscriptionHistory(next)) {
+          const expiresMs = parseMs(next.expiresAt)
+          setBlockedReason(
+            blockedReasonHint ||
+              (expiresMs != null && expiresMs <= Date.now()
+                ? 'expired'
+                : 'transferred'),
+          )
+        } else {
+          setBlockedReason(null)
+        }
+
+        return next
+      } catch {
+        setSubscription(null)
+        return null
+      }
+    },
+    [blockedReasonHint],
+  )
+
+  const requestEmergencyModal = useCallback(() => {
+    setEmergencyDismissed(false)
+  }, [])
+
+  const gateForPlayback = useCallback(
+    async (
+      channel: Pick<ChannelViewModel, 'accessType'> | null,
+      reason = 'playback',
+    ) => {
+      if (catalog.data?.settings.freeMode) {
+        return true
+      }
+
+      if (!channel || channel.accessType !== 'premium') {
+        return true
+      }
+
+      const next = await refreshSubscription(`gate:${reason}`)
+      return next?.active === true
+    },
+    [catalog.data?.settings.freeMode, refreshSubscription],
+  )
+
+  const outletContext: CatalogOutletContext = useMemo(
+    () => ({
+      data: catalog.data,
+      selectedChannel: catalog.selectedChannel,
+      loading: catalog.loading,
+      error: catalog.error,
+      reload: catalog.reload,
+      selectChannel: catalog.selectChannel,
+      subscription,
+      isSubscribed,
+      subscriptionVersion,
+      refreshSubscription,
+      gateForPlayback,
+      requestEmergencyModal,
+    }),
+    [
+      catalog.data,
+      catalog.selectedChannel,
+      catalog.loading,
+      catalog.error,
+      catalog.reload,
+      catalog.selectChannel,
+      subscription,
+      isSubscribed,
+      subscriptionVersion,
+      refreshSubscription,
+      gateForPlayback,
+      requestEmergencyModal,
+    ],
+  )
 
   useEffect(() => {
     startRealtimeSync()
@@ -194,73 +293,17 @@ export function AppShell() {
     })
   }, [catalog.data?.settings.emergencyMode])
 
-  const syncManualGiftState = useCallback(async () => {
-    try {
-      const { deviceId, deviceFingerprint } = await getDeviceIdentity()
-      const subscription = await verifySubscription(deviceId, deviceFingerprint)
-      const nextKey = pickString(subscription.manualGiftAckKey)
-      const acknowledgedKey = readAcknowledgedManualGiftKey()
-      const progress = computeSubscriptionProgress({
-        startedAt: subscription.startedAt,
-        expiresAt: subscription.expiresAt,
-        planDurationDays: subscription.planDurationDays,
-        serverTime: subscription.serverTime,
-        serverTimeFetchedAt: subscription.serverTimeFetchedAt,
-      })
-      const dismissedReminderKey = readDismissedExpiryReminderKey()
-      const nextReminderDays = Math.min(
-        2,
-        Math.max(1, Number(progress.remainingDays) || 1),
-      )
-      const nextReminderKey =
-        subscription.active &&
-        progress.ok &&
-        progress.remainingDays > 0 &&
-        progress.remainingDays <= 2 &&
-        subscription.expiresAt
-          ? `${subscription.expiresAt}|${nextReminderDays}`
-          : ''
-      let nextBlockedReason: TransferredAwayReason | null = null
-
-      if (subscription.active) {
-        setBlockedReasonHint(null)
-        setBlockedReason(null)
-        setBlockedPaused(false)
-        setBlockedRecovering(false)
-      } else if (hasSubscriptionHistory(subscription)) {
-        const expiresMs = parseMs(subscription.expiresAt)
-        nextBlockedReason =
-          blockedReasonHint ||
-          (expiresMs != null && expiresMs <= Date.now() ? 'expired' : 'transferred')
-
-        setBlockedReason(nextBlockedReason)
-      } else {
-        setBlockedReason(null)
-      }
-
-      setManualGiftAckKey(nextKey && nextKey !== acknowledgedKey ? nextKey : null)
-      setExpiryReminderDays(nextReminderDays)
-      setExpiryReminderKey(
-        nextReminderKey && nextReminderKey !== dismissedReminderKey
-          ? nextReminderKey
-          : null,
-      )
-    } catch {
-      return
-    }
-  }, [blockedReasonHint])
+  useEffect(() => {
+    queueMicrotask(() => {
+      void refreshSubscription('cold-start', { recover: true })
+    })
+  }, [refreshSubscription])
 
   useEffect(() => {
     queueMicrotask(() => {
-      void syncManualGiftState()
+      void refreshSubscription(`route:${location.pathname}`)
     })
-  }, [syncManualGiftState])
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      void syncManualGiftState()
-    })
-  }, [location.pathname, syncManualGiftState])
+  }, [location.pathname, refreshSubscription])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -268,7 +311,7 @@ export function AppShell() {
     }
 
     const refresh = () => {
-      void syncManualGiftState()
+      void refreshSubscription('focus')
     }
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -285,7 +328,7 @@ export function AppShell() {
       window.removeEventListener('pageshow', refresh)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [syncManualGiftState])
+  }, [refreshSubscription])
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
@@ -294,14 +337,85 @@ export function AppShell() {
 
     const interval = window.setInterval(() => {
       if (document.visibilityState !== 'hidden') {
-        void syncManualGiftState()
+        void refreshSubscription('foreground-tick')
       }
-    }, 15000)
+    }, SUBSCRIPTION_SYNC_MS)
 
     return () => {
       window.clearInterval(interval)
     }
-  }, [syncManualGiftState])
+  }, [refreshSubscription])
+
+  useEffect(() => {
+    if (!subscription) {
+      setManualGiftAckKey(null)
+      setExpiryReminderKey(null)
+      return
+    }
+
+    const nextKey = pickString(subscription.manualGiftAckKey)
+    const acknowledgedKey = readAcknowledgedManualGiftKey()
+    const progress = computeSubscriptionProgress({
+      startedAt: subscription.startedAt,
+      expiresAt: subscription.expiresAt,
+      planDurationDays: subscription.planDurationDays,
+      serverTime: subscription.serverTime,
+      serverTimeFetchedAt: subscription.serverTimeFetchedAt,
+    })
+    const dismissedReminderKey = readDismissedExpiryReminderKey()
+    const nextReminderDays = Math.min(
+      2,
+      Math.max(1, Number(progress.remainingDays) || 1),
+    )
+    const nextReminderKey =
+      subscription.active &&
+      progress.ok &&
+      progress.remainingDays > 0 &&
+      progress.remainingDays <= 2 &&
+      subscription.expiresAt
+        ? `${subscription.expiresAt}|${nextReminderDays}`
+        : ''
+
+    setManualGiftAckKey(nextKey && nextKey !== acknowledgedKey ? nextKey : null)
+    setExpiryReminderDays(nextReminderDays)
+    setExpiryReminderKey(
+      nextReminderKey && nextReminderKey !== dismissedReminderKey
+        ? nextReminderKey
+        : null,
+    )
+  }, [subscription, subscriptionVersion])
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof document === 'undefined') {
+      return
+    }
+
+    const refreshSettings = () => {
+      void catalog.refreshSettingsOnly()
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        refreshSettings()
+      }
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== 'hidden') {
+        refreshSettings()
+      }
+    }, SETTINGS_POLL_MS)
+
+    window.addEventListener('focus', refreshSettings)
+    window.addEventListener('pageshow', refreshSettings)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+
+    return () => {
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshSettings)
+      window.removeEventListener('pageshow', refreshSettings)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [catalog.refreshSettingsOnly])
 
   useEffect(() => {
     if (!blockedPaused || location.pathname === '/account') {
@@ -329,23 +443,29 @@ export function AppShell() {
     const subscriptions = [
       subscribeRealtimeEvent('transfer_requested', openTransferConfirm),
       subscribeRealtimeEvent('transfer_confirmation_required', openTransferConfirm),
-      subscribeRealtimeEvent('transfer_approved', clearTransferConfirm),
+      subscribeRealtimeEvent('transfer_approved', () => {
+        clearTransferConfirm()
+        void refreshSubscription('sse:transfer-approved')
+      }),
       subscribeRealtimeEvent('transfer_rejected', clearTransferConfirm),
       subscribeRealtimeEvent('transfer_completed', () => {
         clearTransferConfirm()
         setBlockedReasonHint('transferred')
-        void syncManualGiftState()
+        void refreshSubscription('sse:transfer-completed')
       }),
       subscribeRealtimeEvent('subscription_revoked', () => {
         setBlockedReasonHint('revoked')
-        void syncManualGiftState()
+        void refreshSubscription('sse:subscription-revoked')
+      }),
+      subscribeRealtimeEvent('app_settings_changed', () => {
+        void catalog.refreshSettingsOnly()
       }),
     ]
 
     return () => {
       subscriptions.forEach((unsubscribe) => unsubscribe())
     }
-  }, [syncManualGiftState])
+  }, [catalog.refreshSettingsOnly, refreshSubscription])
 
   const handleAcknowledgeManualGift = useCallback(async () => {
     if (!manualGiftAckKey) {
@@ -354,12 +474,15 @@ export function AppShell() {
 
     setManualGiftBusy(true)
     try {
+      const { deviceId, deviceFingerprint } = await getDeviceIdentity()
+      await acknowledgeManualGift(deviceId, deviceFingerprint, manualGiftAckKey)
       writeAcknowledgedManualGiftKey(manualGiftAckKey)
       setManualGiftAckKey(null)
+      await refreshSubscription('manual-gift-ack')
     } finally {
       setManualGiftBusy(false)
     }
-  }, [manualGiftAckKey])
+  }, [manualGiftAckKey, refreshSubscription])
 
   const handleDismissExpiryReminder = useCallback(() => {
     if (expiryReminderKey) {
@@ -382,11 +505,18 @@ export function AppShell() {
     navigate('/account', { state: { openPremiumModal: true } })
   }, [navigate])
 
-  const handleRecoverFromBlockedState = useCallback(() => {
+  const handleRecoverFromBlockedState = useCallback(async () => {
     setBlockedRecovering(true)
+    const recovered = await refreshSubscription('blocked-recover', { recover: true })
+    if (recovered?.active) {
+      setBlockedRecovering(false)
+      setBlockedPaused(false)
+      return
+    }
+
     setBlockedPaused(true)
     navigate('/account', { state: { openTransferRecover: true } })
-  }, [navigate])
+  }, [navigate, refreshSubscription])
 
   return (
     <div className={`app-shell${isPlayerRoute ? ' app-shell--player' : ''}`}>
@@ -421,8 +551,9 @@ export function AppShell() {
         key={transferConfirmEvent?.key ?? 0}
         event={transferConfirmEvent}
         onDismiss={() => setTransferConfirmEvent(null)}
-        onResponded={() => {
+        onResponded={async () => {
           reloadIfStale(0, { silent: true })
+          await refreshSubscription('transfer-responded')
         }}
       />
       <ManualSubscriptionGiftModal

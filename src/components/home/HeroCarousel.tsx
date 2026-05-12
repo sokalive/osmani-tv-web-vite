@@ -7,24 +7,19 @@ import {
   type UIEvent,
 } from 'react'
 import type { BannerRecord, ChannelViewModel } from '../../types/osmani'
+import {
+  formatCountdownClock,
+  getCountdownState,
+  isBannerVisibleAt,
+} from '../../lib/bannerRuntime'
 
 type HeroCarouselProps = {
   slides: BannerRecord[]
   channels: ChannelViewModel[]
-  onSelectChannel: (channel: ChannelViewModel) => void
+  onSelectChannel: (channel: ChannelViewModel) => void | Promise<void>
 }
 
 const AUTO_ADVANCE_MS = 5000
-
-function formatCountdownClock(totalSeconds: number) {
-  const hours = Math.floor(totalSeconds / 3600)
-  const minutes = Math.floor((totalSeconds % 3600) / 60)
-  const seconds = totalSeconds % 60
-
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(
-    seconds,
-  ).padStart(2, '0')}`
-}
 
 type HeroSlideProps = {
   active: boolean
@@ -102,7 +97,13 @@ export function HeroCarousel({
   const draggingRef = useRef(false)
   const [activeIndex, setActiveIndex] = useState(0)
   const [nowMs, setNowMs] = useState(() => Date.now())
-  const safeIndex = slides.length ? Math.min(activeIndex, slides.length - 1) : 0
+  const visibleSlides = useMemo(
+    () => slides.filter((slide) => isBannerVisibleAt(slide, nowMs)),
+    [nowMs, slides],
+  )
+  const safeIndex = visibleSlides.length
+    ? Math.min(activeIndex, visibleSlides.length - 1)
+    : 0
 
   const channelById = useMemo(
     () => new Map(channels.map((channel) => [channel.id, channel])),
@@ -119,7 +120,7 @@ export function HeroCarousel({
     }
 
     viewportRef.current.scrollTo({ left: 0, behavior: 'auto' })
-  }, [slides.length])
+  }, [visibleSlides.length])
 
   useEffect(() => {
     if (!slides.some((slide) => slide.enableCountdown)) {
@@ -134,20 +135,15 @@ export function HeroCarousel({
 
   const countdownLabels = useMemo(
     () =>
-      slides.map((slide) => {
-        if (!slide.enableCountdown || !slide.eventEnd) {
+      visibleSlides.map((slide) => {
+        const countdown = getCountdownState(slide, nowMs)
+        if (!countdown) {
           return null
         }
 
-        const endMs = Date.parse(slide.eventEnd)
-        if (Number.isNaN(endMs) || endMs <= nowMs) {
-          return null
-        }
-
-        const remaining = Math.max(0, Math.floor((endMs - nowMs) / 1000))
-        return `Ends in ${formatCountdownClock(remaining)}`
+        return `${countdown.prefix} ${formatCountdownClock(countdown.remainingSec)}`
       }),
-    [nowMs, slides],
+    [nowMs, visibleSlides],
   )
 
   const syncToIndex = useCallback(
@@ -157,17 +153,17 @@ export function HeroCarousel({
         return
       }
 
-      const clamped = Math.max(0, Math.min(nextIndex, slides.length - 1))
+      const clamped = Math.max(0, Math.min(nextIndex, visibleSlides.length - 1))
       viewport.scrollTo({
         left: viewport.clientWidth * clamped,
         behavior,
       })
     },
-    [slides.length],
+    [visibleSlides.length],
   )
 
   useEffect(() => {
-    if (slides.length <= 1) {
+    if (visibleSlides.length <= 1) {
       return
     }
 
@@ -177,7 +173,7 @@ export function HeroCarousel({
       }
 
       setActiveIndex((current) => {
-        const next = (current + 1) % slides.length
+        const next = (current + 1) % visibleSlides.length
         syncToIndex(next, 'smooth')
         return next
       })
@@ -186,7 +182,7 @@ export function HeroCarousel({
     return () => {
       window.clearInterval(timer)
     }
-  }, [slides.length, syncToIndex])
+  }, [syncToIndex, visibleSlides.length])
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -210,15 +206,15 @@ export function HeroCarousel({
       const width = viewport.clientWidth || 1
       const next = Math.max(
         0,
-        Math.min(slides.length - 1, Math.round(viewport.scrollLeft / width)),
+        Math.min(visibleSlides.length - 1, Math.round(viewport.scrollLeft / width)),
       )
 
       setActiveIndex((current) => (current === next ? current : next))
     },
-    [slides.length],
+    [visibleSlides.length],
   )
 
-  if (!slides.length) {
+  if (!visibleSlides.length) {
     return (
       <div className="hero-carousel hero-carousel--empty">
         <div className="hero-carousel__skeleton" />
@@ -250,7 +246,7 @@ export function HeroCarousel({
           draggingRef.current = false
         }}
       >
-        {slides.map((slide, index) => (
+        {visibleSlides.map((slide, index) => (
           <div
             className="hero-carousel__slide-touch"
             key={`${slide.id}:${slide.imageUrl ?? ''}`}
@@ -270,9 +266,9 @@ export function HeroCarousel({
         ))}
       </div>
 
-      {slides.length > 1 ? (
+      {visibleSlides.length > 1 ? (
         <div className="hero-carousel__dots" aria-label="Hero slides">
-          {slides.map((slide, index) => (
+          {visibleSlides.map((slide, index) => (
             <button
               key={slide.id}
               type="button"

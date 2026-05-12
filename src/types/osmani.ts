@@ -155,6 +155,7 @@ export type CatalogBootstrap = {
   categories: ChannelCategory[]
   banners: BannerRecord[]
   settings: AppModeSettings
+  serverHealth: ServerHealthSnapshot | null
   popupSettings: PopupSettings | null
   whatsappSettings: WhatsappSettings | null
 }

@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useCatalogOutlet } from '../app/catalogOutlet'
 import { useHlsPlayback } from '../hooks/useHlsPlayback'
+import {
+  PING_MS,
+  pingLiveSession,
+  startLiveSession,
+  stopLiveSession,
+} from '../services/analytics'
 
 function PlayerActionIcon({ kind }: { kind: 'play' | 'language' | 'quality' | 'fill' | 'fullscreen' }) {
   if (kind === 'language') {
@@ -48,11 +54,23 @@ function PlayerActionIcon({ kind }: { kind: 'play' | 'language' | 'quality' | 'f
 export function PlayerPage() {
   const navigate = useNavigate()
   const params = useParams()
-  const { data, selectedChannel } = useCatalogOutlet()
+  const {
+    data,
+    selectedChannel,
+    gateForPlayback,
+    requestEmergencyModal,
+    subscriptionVersion,
+  } = useCatalogOutlet()
   const [retryToken, setRetryToken] = useState(0)
   const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain')
   const [pickerKind, setPickerKind] = useState<'language' | 'quality' | null>(null)
   const [controlsPinned, setControlsPinned] = useState(true)
+  const [accessChecking, setAccessChecking] = useState(false)
+  const [accessDenied, setAccessDenied] = useState(false)
+  const sessionDeviceIdRef = useRef('')
+  const heartbeatRef = useRef<number | null>(null)
+  const freeMode = data?.settings.freeMode ?? false
+  const emergencyMode = data?.settings.emergencyMode ?? false
 
   const channel = useMemo(() => {
     const channelId = String(params.channelId ?? '').trim()
@@ -61,9 +79,11 @@ export function PlayerPage() {
       return selectedChannel
     }
 
-    return (
-      data?.channels.find((item) => item.id === channelId) || selectedChannel || null
-    )
+    if (data?.channels) {
+      return data.channels.find((item) => item.id === channelId) || null
+    }
+
+    return selectedChannel
   }, [data?.channels, params.channelId, selectedChannel])
 
   const activeSource =
@@ -142,6 +162,85 @@ export function PlayerPage() {
         : channel?.playbackMessage
 
   useEffect(() => {
+    let cancelled = false
+    if (!channel) {
+      setAccessChecking(false)
+      setAccessDenied(false)
+      return
+    }
+
+    if (freeMode || channel.accessType !== 'premium') {
+      setAccessChecking(false)
+      setAccessDenied(false)
+      return
+    }
+
+    setAccessChecking(true)
+    setAccessDenied(false)
+    void gateForPlayback(channel, `player:${channel.id}`).then((allowed) => {
+      if (cancelled) {
+        return
+      }
+      setAccessChecking(false)
+      setAccessDenied(!allowed)
+      if (!allowed) {
+        navigate('/account', { state: { openPremiumModal: true } })
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    channel,
+    freeMode,
+    gateForPlayback,
+    navigate,
+    subscriptionVersion,
+  ])
+
+  useEffect(() => {
+    if (!emergencyMode) {
+      return
+    }
+
+    requestEmergencyModal()
+    navigate('/')
+  }, [emergencyMode, navigate, requestEmergencyModal])
+
+  useEffect(() => {
+    if (!channel || accessChecking || accessDenied) {
+      return
+    }
+
+    let cancelled = false
+    const channelId = channel.id || channel.name
+    const channelName = channel.name
+
+    void startLiveSession(channelId, channelName).then((deviceId) => {
+      if (cancelled) {
+        return
+      }
+
+      sessionDeviceIdRef.current = deviceId
+      heartbeatRef.current = window.setInterval(() => {
+        void pingLiveSession(deviceId, channelId)
+      }, PING_MS)
+    })
+
+    return () => {
+      cancelled = true
+      if (heartbeatRef.current != null) {
+        window.clearInterval(heartbeatRef.current)
+        heartbeatRef.current = null
+      }
+      const deviceId = sessionDeviceIdRef.current
+      sessionDeviceIdRef.current = ''
+      void stopLiveSession(deviceId, channelId)
+    }
+  }, [accessChecking, accessDenied, channel])
+
+  useEffect(() => {
     if (pickerKind || status !== 'playing') {
       return
     }
@@ -166,6 +265,22 @@ export function PlayerPage() {
           Channel not found in the live catalog.
         </p>
       </div>
+    )
+  }
+
+  if (accessChecking) {
+    return (
+      <section className="player-screen player-screen--empty">
+        <p className="player-screen__empty-text">Inathibitisha kifurushi...</p>
+      </section>
+    )
+  }
+
+  if (accessDenied) {
+    return (
+      <section className="player-screen player-screen--empty">
+        <p className="player-screen__empty-text">Hauna kifurushi hai.</p>
+      </section>
     )
   }
 

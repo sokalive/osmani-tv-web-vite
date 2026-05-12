@@ -1,6 +1,7 @@
-import { type CSSProperties, useEffect, useRef, useState } from 'react'
+import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
 import {
   createPayment,
+  createSubscriptionStreamUrl,
   fetchSubscriptionStatus,
   getPaymentProviders,
   getPaymentStatus,
@@ -64,6 +65,43 @@ function formatPlanDuration(raw: string) {
 
   const match = value.match(/\d+/)
   return match ? `(${match[0]} siku)` : `(${value.replace(/^\(|\)$/g, '')})`
+}
+
+function isSubscriptionActive(subscription: { active?: boolean } | null | undefined) {
+  return Boolean(subscription?.active)
+}
+
+function parseExpiryMs(value: string | null | undefined) {
+  if (!value) {
+    return null
+  }
+
+  const parsed = Date.parse(String(value))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function latestExpiryIso(...candidates: Array<string | null | undefined>) {
+  let bestValue: string | null = null
+  let bestMs: number | null = null
+
+  for (const candidate of candidates) {
+    if (!candidate) {
+      continue
+    }
+
+    const nextValue = String(candidate).trim()
+    const nextMs = parseExpiryMs(nextValue)
+    if (nextMs == null) {
+      continue
+    }
+
+    if (bestMs == null || nextMs > bestMs) {
+      bestMs = nextMs
+      bestValue = nextValue
+    }
+  }
+
+  return bestValue
 }
 
 type PremiumIconName =
@@ -261,6 +299,7 @@ export function PremiumModal({
   const [phoneNumber, setPhoneNumber] = useState('')
   const [remainingSeconds, setRemainingSeconds] = useState(0)
   const [orderId, setOrderId] = useState<string | null>(null)
+  const [waitingDeviceId, setWaitingDeviceId] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState('')
   const [failureReason, setFailureReason] = useState('')
@@ -269,6 +308,7 @@ export function PremiumModal({
   const [providers, setProviders] = useState<PaymentProvider[]>(FALLBACK_NETWORKS)
   const [logoErrors, setLogoErrors] = useState<Record<string, boolean>>({})
   const pollingDoneRef = useRef(false)
+  const subscriptionStreamRef = useRef<EventSource | null>(null)
 
   const selectedAmountDisplay =
     selectedPlan && Number.isFinite(selectedPlan.price)
@@ -277,6 +317,15 @@ export function PremiumModal({
   const isPhoneValid =
     phoneNumber.length === 10 && phoneNumber.startsWith('0')
   const compactResultStep = step === 4 || step === 5
+
+  const closeSubscriptionStream = useCallback(() => {
+    if (!subscriptionStreamRef.current) {
+      return
+    }
+
+    subscriptionStreamRef.current.close()
+    subscriptionStreamRef.current = null
+  }, [])
 
   useEffect(() => {
     if (!visible || typeof document === 'undefined') {
@@ -307,6 +356,30 @@ export function PremiumModal({
       document.removeEventListener('keydown', onKeyDown)
     }
   }, [onClose, visible])
+
+  useEffect(() => {
+    if (visible) {
+      pollingDoneRef.current = false
+      return
+    }
+
+    closeSubscriptionStream()
+    setStep(1)
+    setPlans([])
+    setPlansError('')
+    setSelectedPlan(null)
+    setPhoneNumber('')
+    setRemainingSeconds(0)
+    setOrderId(null)
+    setWaitingDeviceId('')
+    setSubmitting(false)
+    setSubmissionError('')
+    setFailureReason('')
+    setSuccessExpiresAt(null)
+    setFinalizingSuccess(false)
+    setProviders(FALLBACK_NETWORKS)
+    setLogoErrors({})
+  }, [closeSubscriptionStream, visible])
 
   useEffect(() => {
     if (!visible) {
@@ -374,6 +447,82 @@ export function PremiumModal({
     }
   }, [visible])
 
+  const moveToSuccessStep = useCallback(
+    async (streamExpiresAt?: string | null) => {
+      if (pollingDoneRef.current) {
+        return
+      }
+
+      pollingDoneRef.current = true
+      closeSubscriptionStream()
+
+      try {
+        const { deviceId } = await getDeviceIdentity()
+        const subscription = await fetchSubscriptionStatus(deviceId)
+        const mergedExpiry = latestExpiryIso(subscription.expiresAt, streamExpiresAt)
+        setSuccessExpiresAt(
+          isSubscriptionActive(subscription)
+            ? mergedExpiry ?? subscription.expiresAt
+            : streamExpiresAt ?? null,
+        )
+      } catch {
+        setSuccessExpiresAt(streamExpiresAt ?? null)
+      }
+
+      setStep(4)
+    },
+    [closeSubscriptionStream],
+  )
+
+  useEffect(() => {
+    if (!visible || step !== 3 || !waitingDeviceId || pollingDoneRef.current) {
+      return
+    }
+
+    const streamUrl = createSubscriptionStreamUrl(waitingDeviceId)
+    if (!streamUrl) {
+      return
+    }
+
+    closeSubscriptionStream()
+    const stream = new EventSource(streamUrl)
+    subscriptionStreamRef.current = stream
+
+    stream.onmessage = (event) => {
+      if (pollingDoneRef.current) {
+        return
+      }
+
+      try {
+        const payload = JSON.parse(event.data ?? '{}') as Record<string, unknown>
+        const expiresAt =
+          typeof payload.expiresAt === 'string'
+            ? payload.expiresAt
+            : typeof payload.expires_at === 'string'
+              ? payload.expires_at
+              : null
+
+        if (
+          payload.active === true ||
+          payload.isActive === true ||
+          payload.is_active === true
+        ) {
+          void moveToSuccessStep(expiresAt)
+        }
+      } catch {
+        return
+      }
+    }
+
+    stream.onerror = () => {
+      return
+    }
+
+    return () => {
+      closeSubscriptionStream()
+    }
+  }, [closeSubscriptionStream, moveToSuccessStep, step, visible, waitingDeviceId])
+
   useEffect(() => {
     if (!visible || step !== 3 || !orderId) {
       return
@@ -392,18 +541,15 @@ export function PremiumModal({
         try {
           const result = await getPaymentStatus(orderId)
           if (result.status === 'SUCCESS') {
-            pollingDoneRef.current = true
             window.clearInterval(pollTimer)
             window.clearInterval(countdownTimer)
-            const { deviceId } = await getDeviceIdentity()
-            const subscription = await fetchSubscriptionStatus(deviceId)
-            setSuccessExpiresAt(subscription.expiresAt)
-            setStep(4)
+            await moveToSuccessStep()
             return
           }
 
           if (result.status === 'FAILED') {
             pollingDoneRef.current = true
+            closeSubscriptionStream()
             window.clearInterval(pollTimer)
             window.clearInterval(countdownTimer)
             setFailureReason(result.reason || 'Malipo hayajafanikiwa')
@@ -411,6 +557,7 @@ export function PremiumModal({
           }
         } catch (error) {
           pollingDoneRef.current = true
+          closeSubscriptionStream()
           window.clearInterval(pollTimer)
           window.clearInterval(countdownTimer)
           setFailureReason(
@@ -425,7 +572,7 @@ export function PremiumModal({
       window.clearInterval(countdownTimer)
       window.clearInterval(pollTimer)
     }
-  }, [orderId, step, visible])
+  }, [closeSubscriptionStream, moveToSuccessStep, orderId, step, visible])
 
   async function handleStartPayment() {
     if (!selectedPlan || submitting) {
@@ -452,6 +599,7 @@ export function PremiumModal({
 
       pollingDoneRef.current = false
       setFailureReason('')
+      setWaitingDeviceId(deviceId)
       setOrderId(payment.orderId)
       setRemainingSeconds(payment.expiresInSeconds ?? 0)
       setStep(3)
@@ -476,8 +624,10 @@ export function PremiumModal({
 
   function handleRetry() {
     pollingDoneRef.current = false
+    closeSubscriptionStream()
     setFailureReason('')
     setOrderId(null)
+    setWaitingDeviceId('')
     setRemainingSeconds(0)
     setSubmissionError('')
     setStep(2)

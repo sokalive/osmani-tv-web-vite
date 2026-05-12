@@ -8,6 +8,7 @@ import {
   fetchCategories,
   fetchChannels,
   fetchPopupSettings,
+  fetchServerHealth,
   fetchWhatsappSettings,
 } from '../services/api/osmaniAdminService'
 import { subscribeRealtimeEvent } from '../services/realtimeSync'
@@ -33,22 +34,33 @@ const PLAYER_ROUTE_REVALIDATE_MS = 60000
 const FOCUS_REVALIDATE_MS = 4000
 const SSE_RELOAD_DEBOUNCE_MS = 500
 
+function applyFreeModeToChannels(
+  channels: ChannelViewModel[],
+  freeMode: boolean,
+) {
+  if (!freeMode) {
+    return channels
+  }
+
+  return channels.map((channel) => ({
+    ...channel,
+    accessType: 'free' as const,
+  }))
+}
+
 async function loadCatalogSnapshot() {
-  const [channels, settings, banners, popupSettings, whatsappSettings] =
+  const serverHealthPromise = fetchServerHealth()
+  const [serverHealth, settings, banners, popupSettings, whatsappSettings, channels] =
     await Promise.all([
-      fetchChannels(),
+      serverHealthPromise,
       fetchAppSettings(),
       fetchBanners(),
       fetchPopupSettings(),
       fetchWhatsappSettings(),
+      serverHealthPromise.then((health) => fetchChannels(health)),
     ])
 
-  const effectiveChannels = settings.freeMode
-    ? channels.map((channel) => ({
-        ...channel,
-        accessType: 'free' as const,
-      }))
-    : channels
+  const effectiveChannels = applyFreeModeToChannels(channels, settings.freeMode)
   const categories = await fetchCategories(effectiveChannels)
 
   return {
@@ -56,6 +68,7 @@ async function loadCatalogSnapshot() {
     categories,
     banners,
     settings,
+    serverHealth,
     popupSettings,
     whatsappSettings,
   } satisfies CatalogBootstrap
@@ -173,6 +186,32 @@ export function useCatalogBootstrap({
     },
     [runReload],
   )
+
+  const refreshSettingsOnly = useCallback(async () => {
+    try {
+      const settings = await fetchAppSettings()
+      if (stateRef.current.data?.settings.freeMode !== settings.freeMode) {
+        void runReload({ silent: stateRef.current.data != null })
+        return
+      }
+
+      setState((current) => {
+        if (!current.data) {
+          return current
+        }
+
+        return {
+          ...current,
+          data: {
+            ...current.data,
+            settings,
+          },
+        }
+      })
+    } catch {
+      return
+    }
+  }, [runReload])
 
   const scheduleSilentReload = useCallback(
     (delayMs = SSE_RELOAD_DEBOUNCE_MS) => {
@@ -294,5 +333,6 @@ export function useCatalogBootstrap({
       void runReload({ silent: false })
     },
     reloadIfStale,
+    refreshSettingsOnly,
   }
 }

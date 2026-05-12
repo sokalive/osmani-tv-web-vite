@@ -1,5 +1,9 @@
 import { useOutletContext } from 'react-router-dom'
-import type { ChannelViewModel, CatalogBootstrap } from '../types/osmani'
+import type {
+  ChannelViewModel,
+  CatalogBootstrap,
+  SubscriptionStatus,
+} from '../types/osmani'
 
 export type CatalogOutletContext = {
   data: CatalogBootstrap | null
@@ -8,6 +12,18 @@ export type CatalogOutletContext = {
   error: string | null
   reload: () => void
   selectChannel: (channel: ChannelViewModel) => void
+  subscription: SubscriptionStatus | null
+  isSubscribed: boolean
+  subscriptionVersion: number
+  refreshSubscription: (
+    reason?: string,
+    options?: { recover?: boolean },
+  ) => Promise<SubscriptionStatus | null>
+  gateForPlayback: (
+    channel: Pick<ChannelViewModel, 'accessType'> | null,
+    reason?: string,
+  ) => Promise<boolean>
+  requestEmergencyModal: () => void
 }
 
 export function useCatalogOutlet() {

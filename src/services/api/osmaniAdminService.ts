@@ -68,11 +68,12 @@ export async function fetchServerHealth() {
   }
 }
 
-export async function fetchChannels() {
-  const [payload, serverHealth] = await Promise.all([
-    osmaniAdminClient.get<RawChannelRecord[]>(env.channelsPath),
-    fetchServerHealth(),
-  ])
+export async function fetchChannels(serverHealthOverride?: ServerHealthSnapshot | null) {
+  const payload = await osmaniAdminClient.get<RawChannelRecord[]>(env.channelsPath)
+  const serverHealth =
+    serverHealthOverride === undefined
+      ? await fetchServerHealth()
+      : serverHealthOverride
   const channels = Array.isArray(payload)
     ? payload
         .map((row) => toChannelViewModel(row, serverHealth))

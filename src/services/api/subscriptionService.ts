@@ -3,6 +3,7 @@ import type {
   SubscriptionPlan,
   SubscriptionStatus,
 } from '../../types/osmani'
+import { env } from '../../config/env'
 import { osmaniAdminClient } from './osmaniAdminClient'
 import { osmaniAdminPaymentClient } from './osmaniAdminPaymentClient'
 
@@ -768,9 +769,21 @@ export async function createPayment({
 }
 
 export async function getPaymentStatus(orderId: string) {
-  const payload = await osmaniAdminPaymentClient.get<unknown>(
-    `/api/payment-status/${encodeURIComponent(orderId)}`,
-  )
+  let payload: unknown
+  try {
+    payload = await osmaniAdminPaymentClient.get<unknown>(
+      `/api/payment-status/${encodeURIComponent(orderId)}`,
+    )
+  } catch (error) {
+    const status =
+      error instanceof Error && 'status' in error
+        ? Number((error as { status?: number }).status ?? 0)
+        : 0
+    if (status === 404) {
+      return { status: 'FAILED', reason: 'Order not found' }
+    }
+    throw error
+  }
 
   if (!isPlainObject(payload)) {
     return { status: 'PENDING', reason: '' as string }
@@ -780,4 +793,52 @@ export async function getPaymentStatus(orderId: string) {
     status: (pickString(payload.status) || 'PENDING').toUpperCase(),
     reason: pickString(payload.reason, payload.error) || '',
   }
+}
+
+export async function recoverSubscription(
+  deviceId: string,
+  deviceFingerprint: string,
+) {
+  const payload = await osmaniAdminPaymentClient.post<unknown>(
+    '/api/subscription/recover',
+    {
+      device_id: deviceId,
+      device_fingerprint: deviceFingerprint,
+    },
+  )
+
+  return normalizeVerifyResponse(payload)
+}
+
+export async function acknowledgeManualGift(
+  deviceId: string,
+  deviceFingerprint: string,
+  manualGiftAckKey: string,
+) {
+  return osmaniAdminPaymentClient.post<unknown>(
+    '/api/subscription/acknowledge-manual-gift',
+    {
+      device_id: deviceId,
+      device_fingerprint: deviceFingerprint,
+      manual_gift_ack_key: String(manualGiftAckKey).trim(),
+      manualGiftAckKey: String(manualGiftAckKey).trim(),
+      gift_ack_key: String(manualGiftAckKey).trim(),
+    },
+  )
+}
+
+export function createSubscriptionStreamUrl(deviceId: string) {
+  const baseUrl = String(env.osmaniAdminPaymentProxyUrl || '').trim()
+  if (!baseUrl || typeof window === 'undefined') {
+    return ''
+  }
+
+  const resolvedBase = /^https?:\/\//i.test(baseUrl)
+    ? baseUrl
+    : new URL(baseUrl, window.location.origin).toString()
+
+  return new URL(
+    `api/subscription-stream?device_id=${encodeURIComponent(deviceId)}`,
+    `${resolvedBase.replace(/\/+$/, '')}/`,
+  ).toString()
 }

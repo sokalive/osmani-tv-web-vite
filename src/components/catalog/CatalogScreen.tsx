@@ -57,9 +57,20 @@ export function CatalogScreen({
   mode = 'home',
 }: CatalogScreenProps) {
   const navigate = useNavigate()
-  const { data, loading, error, selectChannel, reload } = useCatalogOutlet()
+  const {
+    data,
+    loading,
+    error,
+    selectChannel,
+    reload,
+    isSubscribed,
+    gateForPlayback,
+    requestEmergencyModal,
+  } = useCatalogOutlet()
   const [selectedFilter, setSelectedFilter] = useState<HomeFilter>('Zote')
   const maintenanceMode = data?.settings.maintenanceMode ?? false
+  const emergencyMode = data?.settings.emergencyMode ?? false
+  const freeMode = data?.settings.freeMode ?? false
 
   const channels = useMemo(() => {
     const rows = data?.channels ?? []
@@ -80,7 +91,26 @@ export function CatalogScreen({
       ? 'Tamthilia na Movies'
       : 'Michezo na Soka'
 
-  const openChannel = (channel: ChannelViewModel) => {
+  const openChannel = async (channel: ChannelViewModel) => {
+    if (maintenanceMode) {
+      return
+    }
+
+    if (emergencyMode) {
+      requestEmergencyModal()
+      return
+    }
+
+    if (!freeMode && channel.accessType === 'premium' && !isSubscribed) {
+      navigate('/account', { state: { openPremiumModal: true } })
+      return
+    }
+
+    const allowed = await gateForPlayback(channel, `catalog:${channel.id}`)
+    if (!allowed) {
+      return
+    }
+
     selectChannel(channel)
     navigate(`/player/${channel.id}`)
   }

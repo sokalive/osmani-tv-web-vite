@@ -5,13 +5,9 @@ import { PremiumModal } from '../components/account/PremiumModal'
 import { TransferModal } from '../components/account/TransferModal'
 import { formatSubscriptionExpiry } from '../lib/formatExpiry'
 import { computeSubscriptionProgress } from '../lib/subscriptionMath'
-import {
-  redeemOfferCode,
-  verifySubscription,
-} from '../services/api/subscriptionService'
+import { redeemOfferCode } from '../services/api/subscriptionService'
 import { getDeviceIdentity, getDeviceLabel } from '../services/auth/deviceIdentity'
 import { subscribeRealtimeEvent } from '../services/realtimeSync'
-import type { SubscriptionStatus } from '../types/osmani'
 
 function formatPrice(amount: number | null, currency: string | null) {
   if (amount == null) {
@@ -90,7 +86,7 @@ function StatCard({ icon, value, label }: StatCardProps) {
 export function AccountPage() {
   const navigate = useNavigate()
   const location = useLocation()
-  const { data } = useCatalogOutlet()
+  const { data, subscription, refreshSubscription } = useCatalogOutlet()
   const routeState = location.state as
     | { openPremiumModal?: boolean; openTransferRecover?: boolean }
     | null
@@ -103,7 +99,6 @@ export function AccountPage() {
   const [cooldownEndMs, setCooldownEndMs] = useState<number | null>(null)
   const [cooldownRemainingSec, setCooldownRemainingSec] = useState(0)
   const [deviceIdFull, setDeviceIdFull] = useState('')
-  const [subscription, setSubscription] = useState<SubscriptionStatus | null>(null)
   const [accountLoading, setAccountLoading] = useState(true)
   const [accountError, setAccountError] = useState('')
   const [offerError, setOfferError] = useState('')
@@ -199,12 +194,14 @@ export function AccountPage() {
     }
 
     try {
-      const { deviceId, deviceFingerprint } = await getDeviceIdentity()
+      const { deviceId } = await getDeviceIdentity()
       setDeviceIdFull(deviceId)
-      const status = await verifySubscription(deviceId, deviceFingerprint)
-      setSubscription(status)
+      const status = await refreshSubscription('account-screen')
+      if (!status && !silent) {
+        setAccountError('Imeshindwa kupakia akaunti.')
+      }
     } catch (error) {
-      if (!silent || !subscription) {
+      if (!silent) {
         setAccountError(
           error instanceof Error ? error.message : 'Imeshindwa kupakia akaunti.',
         )
@@ -212,7 +209,7 @@ export function AccountPage() {
     } finally {
       setAccountLoading(false)
     }
-  }, [subscription])
+  }, [refreshSubscription])
 
   useEffect(() => {
     queueMicrotask(() => {
