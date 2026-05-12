@@ -102,6 +102,11 @@ export type ChannelRow = {
   url: string
   backupStream1: string
   backupStream2: string
+  playbackUrl: string
+  backupPlayback1: string
+  backupPlayback2: string
+  deliveryPath: string
+  streamProxy: string
   origin: string
   referer: string
   userAgent: string
@@ -110,8 +115,11 @@ export type ChannelRow = {
 export type PlaybackCandidate = {
   id: string
   label: string
-  url: string
-  proxiedUrl: string
+  sourceUrl: string
+  playbackUrl: string
+  deliveryPath: string
+  streamProxy: string
+  usesBackendDelivery: boolean
   isDirectManifest: boolean
 }
 
@@ -136,6 +144,7 @@ export type ChannelViewModel = {
   playerType: ChannelRow['playerType']
   playbackReadiness: PlaybackReadiness
   playbackMessage: string
+  usesCanonicalPlayback: boolean
   playbackCandidates: PlaybackCandidate[]
   streamHeaders: {
     origin: string

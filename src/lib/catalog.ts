@@ -15,6 +15,18 @@ type RawChannelRecord = Record<string, unknown>
 
 const directManifestPattern = /\.m3u8($|[?#])/i
 
+function resolveBaseUrl(rawBaseUrl: string) {
+  if (/^https?:\/\//i.test(rawBaseUrl)) {
+    return rawBaseUrl
+  }
+
+  if (typeof window !== 'undefined') {
+    return new URL(rawBaseUrl, window.location.origin).toString()
+  }
+
+  return `http://localhost${rawBaseUrl.startsWith('/') ? rawBaseUrl : `/${rawBaseUrl}`}`
+}
+
 function normalizePlayerType(raw: unknown): ChannelRow['playerType'] {
   const value = String(raw ?? 'exo')
     .trim()
@@ -74,10 +86,37 @@ function toProxyUrl(
   }
 
   if (headers.userAgent) {
-    params.set('userAgent', headers.userAgent)
+    params.set('ua', headers.userAgent)
   }
 
   return `${env.streamProxyBaseUrl}?${params.toString()}`
+}
+
+function resolveBackendPlaybackUrl(rawUrl: unknown) {
+  const value = asString(rawUrl)
+  if (!value) {
+    return ''
+  }
+
+  if (/^https?:\/\//i.test(value)) {
+    return value
+  }
+
+  if (value.startsWith('//')) {
+    return `https:${value}`
+  }
+
+  if (value.startsWith('/osmani-admin-proxy/') || value.startsWith('/osmani-tv-proxy/')) {
+    return value
+  }
+
+  const adminBaseUrl = `${resolveBaseUrl(env.osmaniAdminApiUrl).replace(/\/+$/, '')}/`
+
+  if (value.startsWith('/')) {
+    return new URL(value.replace(/^\//, ''), adminBaseUrl).toString()
+  }
+
+  return new URL(value, adminBaseUrl).toString()
 }
 
 export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
@@ -112,6 +151,11 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
     url: asString(raw.url ?? raw.stream_url),
     backupStream1: asString(raw.backupStream1 ?? raw.backup_stream_1),
     backupStream2: asString(raw.backupStream2 ?? raw.backup_stream_2),
+    playbackUrl: asString(raw.playbackUrl ?? raw.playback_url),
+    backupPlayback1: asString(raw.backupPlayback1 ?? raw.backup_playback_1),
+    backupPlayback2: asString(raw.backupPlayback2 ?? raw.backup_playback_2),
+    deliveryPath: asString(raw.deliveryPath ?? raw.delivery_path),
+    streamProxy: asString(raw.streamProxy ?? raw.stream_proxy),
     origin: asString(raw.origin ?? raw.stream_origin),
     referer: asString(raw.referer ?? raw.referrer),
     userAgent: asString(raw.userAgent ?? raw.user_agent),
@@ -175,6 +219,34 @@ function findServerHealthForChannel(
 }
 
 function createPlaybackCandidates(channel: ChannelRow) {
+  const canonicalSources = [
+    { id: 'primary', label: 'Primary', url: channel.playbackUrl },
+    { id: 'backup-1', label: 'Backup 1', url: channel.backupPlayback1 },
+    { id: 'backup-2', label: 'Backup 2', url: channel.backupPlayback2 },
+  ]
+
+  if (canonicalSources.some((source) => source.url)) {
+    return canonicalSources.reduce<PlaybackCandidate[]>((list, source) => {
+      const playbackUrl = resolveBackendPlaybackUrl(source.url)
+      if (!playbackUrl) {
+        return list
+      }
+
+      list.push({
+        id: source.id,
+        label: source.label,
+        sourceUrl: source.url,
+        playbackUrl,
+        deliveryPath: channel.deliveryPath,
+        streamProxy: channel.streamProxy,
+        usesBackendDelivery: true,
+        isDirectManifest: true,
+      })
+
+      return list
+    }, [])
+  }
+
   const headers = {
     origin: channel.origin,
     referer: channel.referer,
@@ -193,8 +265,11 @@ function createPlaybackCandidates(channel: ChannelRow) {
     list.push({
       id: source.id,
       label: source.label,
-      url: source.url,
-      proxiedUrl: toProxyUrl(source.url, headers),
+      sourceUrl: source.url,
+      playbackUrl: toProxyUrl(source.url, headers),
+      deliveryPath: '',
+      streamProxy: env.streamProxyBaseUrl,
+      usesBackendDelivery: false,
       isDirectManifest: directManifestPattern.test(source.url),
     })
 
@@ -203,10 +278,22 @@ function createPlaybackCandidates(channel: ChannelRow) {
 }
 
 function getPlaybackState(channel: ChannelRow, candidates: PlaybackCandidate[]) {
+  const usesCanonicalPlayback = Boolean(
+    channel.playbackUrl || channel.backupPlayback1 || channel.backupPlayback2,
+  )
+
   if (candidates.length === 0) {
     return {
       readiness: 'missing-url' as PlaybackReadiness,
       message: 'This channel does not currently expose a stream URL.',
+    }
+  }
+
+  if (usesCanonicalPlayback) {
+    return {
+      readiness: 'ready' as PlaybackReadiness,
+      message:
+        'This channel is routed through the backend playback delivery contract for browser-safe playback.',
     }
   }
 
@@ -242,6 +329,9 @@ export function toChannelViewModel(
   const healthStatus = String(health?.status ?? '').trim().toLowerCase()
   const playbackCandidates = createPlaybackCandidates(channel)
   const playbackState = getPlaybackState(channel, playbackCandidates)
+  const usesCanonicalPlayback = Boolean(
+    channel.playbackUrl || channel.backupPlayback1 || channel.backupPlayback2,
+  )
   const isLive =
     healthStatus === 'online'
       ? true
@@ -262,6 +352,7 @@ export function toChannelViewModel(
     showInApp: channel.showInApp,
     accessType: channel.accessType,
     playerType: channel.playerType,
+    usesCanonicalPlayback,
     playbackCandidates,
     playbackReadiness: playbackState.readiness,
     playbackMessage: playbackState.message,

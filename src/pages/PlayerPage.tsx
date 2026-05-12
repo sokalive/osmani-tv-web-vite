@@ -165,6 +165,7 @@ export function PlayerPage() {
     subscriptionVersion,
   } = useCatalogOutlet()
   const [retryToken, setRetryToken] = useState(0)
+  const [activeSourceIndex, setActiveSourceIndex] = useState(0)
   const [fitMode, setFitMode] = useState<'contain' | 'cover'>('contain')
   const [pickerKind, setPickerKind] = useState<'language' | 'quality' | null>(null)
   const [overlayVisible, setOverlayVisible] = useState(true)
@@ -174,6 +175,7 @@ export function PlayerPage() {
   const sessionDeviceIdRef = useRef('')
   const heartbeatRef = useRef<number | null>(null)
   const hideControlsTimerRef = useRef<number | null>(null)
+  const failoverAttemptRef = useRef('')
   const surfaceRef = useRef<HTMLDivElement | null>(null)
   const autoImmersiveAttemptRef = useRef(false)
   const playStartedImmersiveRetryRef = useRef(false)
@@ -195,14 +197,15 @@ export function PlayerPage() {
     return selectedChannel
   }, [data?.channels, params.channelId, selectedChannel])
 
-  const activeSource =
-    channel?.playbackCandidates.find((candidate) => candidate.isDirectManifest) ??
-    channel?.playbackCandidates[0] ??
-    null
+  const activeSource = channel?.playbackCandidates[activeSourceIndex] ?? null
   const playbackSrc =
     channel?.playbackReadiness === 'ready' && activeSource
-      ? activeSource.proxiedUrl
+      ? activeSource.playbackUrl
       : ''
+  const hasNextPlaybackSource = Boolean(
+    channel && activeSourceIndex < channel.playbackCandidates.length - 1,
+  )
+  const currentSourceLabel = activeSource?.label || 'Primary'
 
   const {
     videoRef,
@@ -271,7 +274,13 @@ export function PlayerPage() {
     status === 'error'
       ? error || channel?.playbackMessage
       : status === 'buffering'
-        ? 'Inabuffer stream ya moja kwa moja...'
+        ? activeSourceIndex > 0
+          ? `${currentSourceLabel} inabuffer stream ya moja kwa moja...`
+          : 'Inabuffer stream ya moja kwa moja...'
+        : status === 'loading'
+          ? activeSourceIndex > 0
+            ? `${currentSourceLabel} inaunganishwa...`
+            : channel?.playbackMessage
         : channel?.playbackMessage
 
   const clearHideControlsTimer = useCallback(() => {
@@ -421,11 +430,54 @@ export function PlayerPage() {
   }, [unlockOrientation])
 
   useEffect(() => {
+    setActiveSourceIndex(0)
+    setRetryToken(0)
+    failoverAttemptRef.current = ''
+  }, [channel?.id])
+
+  useEffect(() => {
+    if (!channel?.playbackCandidates.length) {
+      if (activeSourceIndex !== 0) {
+        setActiveSourceIndex(0)
+      }
+      return
+    }
+
+    if (activeSourceIndex > channel.playbackCandidates.length - 1) {
+      setActiveSourceIndex(channel.playbackCandidates.length - 1)
+    }
+  }, [activeSourceIndex, channel?.playbackCandidates.length])
+
+  useEffect(() => {
     autoImmersiveAttemptRef.current = false
     playStartedImmersiveRetryRef.current = false
     clearHideControlsTimer()
     setOverlayVisible(true)
   }, [channel?.id, clearHideControlsTimer, playbackSrc])
+
+  useEffect(() => {
+    if (status !== 'error' || !channel || !activeSource || !hasNextPlaybackSource) {
+      return
+    }
+
+    const attemptKey = `${channel.id}:${activeSource.id}:${activeSourceIndex}:${retryToken}`
+    if (failoverAttemptRef.current === attemptKey) {
+      return
+    }
+
+    failoverAttemptRef.current = attemptKey
+    setOverlayVisible(true)
+    setActiveSourceIndex((current) =>
+      Math.min(current + 1, channel.playbackCandidates.length - 1),
+    )
+  }, [
+    activeSource,
+    activeSourceIndex,
+    channel,
+    hasNextPlaybackSource,
+    retryToken,
+    status,
+  ])
 
   useEffect(() => {
     let cancelled = false
