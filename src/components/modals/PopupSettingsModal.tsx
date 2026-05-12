@@ -67,11 +67,9 @@ export function PopupSettingsModal({ settings }: PopupSettingsModalProps) {
 
   return (
     <div className="popup-modal" role="dialog" aria-modal="true">
-      <button
-        type="button"
+      <div
         className="popup-modal__backdrop"
-        aria-label="Close popup"
-        onClick={close}
+        aria-hidden="true"
       />
       <div className="popup-modal__card">
         <div className="popup-modal__icon-wrap">

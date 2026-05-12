@@ -1569,6 +1569,11 @@ svg {
   padding: 18px;
 }
 
+.popup-modal {
+  z-index: 89;
+  padding: 28px 22px;
+}
+
 .popup-modal__backdrop,
 .premium-modal__backdrop,
 .transfer-modal__backdrop {
