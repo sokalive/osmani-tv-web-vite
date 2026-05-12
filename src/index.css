@@ -3551,10 +3551,19 @@ svg {
   background: rgba(0, 0, 0, 0.7);
 }
 
-.premium-modal__sheet {
+.premium-modal__centered-wrap {
   position: relative;
   z-index: 1;
-  width: min(100%, 420px);
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.premium-modal__sheet {
+  width: 100%;
+  max-width: 420px;
   height: min(85vh, 760px);
   max-height: min(85vh, 760px);
   overflow: hidden;
@@ -3613,6 +3622,7 @@ svg {
 .premium-modal__modal-scroll--step2-centered {
   display: flex;
   flex-direction: column;
+  min-height: 100%;
   padding-bottom: 16px;
 }
 

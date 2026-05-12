@@ -936,55 +936,57 @@ export function PremiumModal({
         onClick={onClose}
       />
 
-      <div className={`premium-modal__sheet${compactResultStep ? ' premium-modal__sheet--compact-result' : ''}`}>
-        <div className={`premium-modal__sheet-safe${step === 2 ? ' premium-modal__sheet-safe--compact-bottom' : ''}`}>
-          <div className="premium-modal__sheet-body">
-            <div
-              className={`premium-modal__modal-scroll${
-                step === 2
-                  ? ' premium-modal__modal-scroll--step2-centered'
-                  : compactResultStep
-                    ? ' premium-modal__modal-scroll--compact-result'
-                    : ' premium-modal__modal-scroll--default'
-              }`}
-            >
-              <div className="premium-modal__handle-bar" />
+      <div className="premium-modal__centered-wrap">
+        <div className={`premium-modal__sheet${compactResultStep ? ' premium-modal__sheet--compact-result' : ''}`}>
+          <div className={`premium-modal__sheet-safe${step === 2 ? ' premium-modal__sheet-safe--compact-bottom' : ''}`}>
+            <div className="premium-modal__sheet-body">
               <div
-                key={step}
-                className={`premium-modal__animated-step${step === 2 ? ' premium-modal__animated-step--fill' : ''}`}
+                className={`premium-modal__modal-scroll${
+                  step === 2
+                    ? ' premium-modal__modal-scroll--step2-centered'
+                    : compactResultStep
+                      ? ' premium-modal__modal-scroll--compact-result'
+                      : ' premium-modal__modal-scroll--default'
+                }`}
               >
-                {renderStepContent()}
+                <div className="premium-modal__handle-bar" />
+                <div
+                  key={step}
+                  className={`premium-modal__animated-step${step === 2 ? ' premium-modal__animated-step--fill' : ''}`}
+                >
+                  {renderStepContent()}
+                </div>
               </div>
-            </div>
 
-            <div
-              className="premium-modal__cta-dock"
-              aria-hidden={step !== 1 && step !== 3}
-            >
-              {step === 1 ? (
-                <button
-                  type="button"
-                  className={`premium-modal__cta-wrap premium-modal__cta-dock-btn${!selectedPlan || plansLoading ? ' premium-modal__cta-disabled' : ''}`}
-                  disabled={!selectedPlan || plansLoading}
-                  onClick={() => setStep(2)}
-                >
-                  <span className="premium-modal__cta-gradient">
-                    <span className="premium-modal__cta-text">
-                      Lipia — {selectedAmountDisplay}
+              <div
+                className="premium-modal__cta-dock"
+                aria-hidden={step !== 1 && step !== 3}
+              >
+                {step === 1 ? (
+                  <button
+                    type="button"
+                    className={`premium-modal__cta-wrap premium-modal__cta-dock-btn${!selectedPlan || plansLoading ? ' premium-modal__cta-disabled' : ''}`}
+                    disabled={!selectedPlan || plansLoading}
+                    onClick={() => setStep(2)}
+                  >
+                    <span className="premium-modal__cta-gradient">
+                      <span className="premium-modal__cta-text">
+                        Lipia — {selectedAmountDisplay}
+                      </span>
                     </span>
-                  </span>
-                </button>
-              ) : null}
+                  </button>
+                ) : null}
 
-              {step === 3 ? (
-                <button
-                  type="button"
-                  className="premium-modal__cancel-btn premium-modal__cta-dock-btn"
-                  onClick={onClose}
-                >
-                  <span className="premium-modal__cancel-btn-text">GHAIRI</span>
-                </button>
-              ) : null}
+                {step === 3 ? (
+                  <button
+                    type="button"
+                    className="premium-modal__cancel-btn premium-modal__cta-dock-btn"
+                    onClick={onClose}
+                  >
+                    <span className="premium-modal__cancel-btn-text">GHAIRI</span>
+                  </button>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>
