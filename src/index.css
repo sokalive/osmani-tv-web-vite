@@ -1204,6 +1204,7 @@ svg {
 
 .account-screen--strict {
   gap: 0;
+  padding-top: 8px;
 }
 
 .account-screen__header--strict {
@@ -1267,15 +1268,22 @@ svg {
 
 .account-screen--strict .account-stat,
 .account-screen--strict .account-panel,
-.account-device-section,
 .account-offer-section {
   background: #1a1d23;
   border-radius: 14px;
-  padding: 16px;
   border: 1px solid rgba(255, 255, 255, 0.03);
-  box-shadow:
-    0 2px 4px rgba(0, 0, 0, 0.2),
-    0 12px 24px rgba(0, 0, 0, 0.24);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.account-screen--strict .account-panel,
+.account-offer-section {
+  padding: 16px;
+}
+
+.account-screen--strict .account-stat {
+  padding: 14px;
+  min-height: 108px;
+  border: 1px solid rgba(255, 255, 255, 0.03);
 }
 
 .account-screen--strict .account-stat {
@@ -1377,11 +1385,7 @@ svg {
 .account-gradient-card,
 .account-primary-cta {
   width: 100%;
-  border-radius: 16px;
   padding: 16px;
-  box-shadow:
-    0 4px 6px rgba(0, 0, 0, 0.18),
-    0 10px 22px rgba(0, 0, 0, 0.28);
 }
 
 .account-gradient-card {
@@ -1389,9 +1393,11 @@ svg {
   justify-items: start;
   gap: 6px;
   margin-bottom: 12px;
+  border-radius: 14px;
   background: linear-gradient(90deg, #dc2626, #16a34a);
   color: var(--white);
   text-align: left;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
 }
 
 .account-gradient-card span {
@@ -1409,12 +1415,14 @@ svg {
 .account-primary-cta {
   margin-top: 20px;
   margin-bottom: 24px;
+  border-radius: 16px;
   color: #111827;
   background: linear-gradient(90deg, #ffcb3d, #e5a020);
   font-size: 17px;
   font-weight: 800;
   letter-spacing: 0.5px;
   text-align: center;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.25);
 }
 
 .account-primary-cta--disabled {
@@ -1427,8 +1435,7 @@ svg {
 }
 
 .account-device-section {
-  display: grid;
-  gap: 12px;
+  display: block;
   margin-bottom: 8px;
 }
 
@@ -1470,6 +1477,7 @@ svg {
   border-radius: 12px;
   background: #1a1d23;
   margin-bottom: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.18);
 }
 
 .account-device-row code {
