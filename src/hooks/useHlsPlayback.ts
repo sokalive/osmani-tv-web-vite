@@ -11,6 +11,8 @@ export type PlaybackStatus =
   | 'awaiting-user'
   | 'error'
 
+export type PlaybackEngine = 'none' | 'native' | 'hls-js' | 'legacy-video'
+
 export type PlaybackQualityOption = {
   id: number
   label: string
@@ -47,6 +49,10 @@ type FullscreenCapableDocument = Document & {
 }
 
 const LIVE_HLS_MIME = 'application/vnd.apple.mpegurl'
+/** After this long stuck in loading with hls.js, try legacy direct <video src>. */
+const LEGACY_LOADING_FALLBACK_MS = 24000
+/** Max automatic hls.js network fatal recoveries before legacy fallback. */
+const HLS_NETWORK_FATAL_RECOVERIES = 2
 
 function formatQualityLabel(level: {
   height?: number
@@ -87,10 +93,14 @@ function formatAudioTrackLabel(track: {
   }
 
   if (typeof track.lang === 'string' && track.lang.trim()) {
-    return track.lang.trim().toUpperCase()
+    return track.lang.toUpperCase()
   }
 
   return `Audio ${index + 1}`
+}
+
+function looksLikeStreamProxyUrl(url: string) {
+  return /stream-proxy|stream_proxy|osmani-admin-proxy|\/stream-proxy/i.test(url)
 }
 
 export function useHlsPlayback({
@@ -110,6 +120,7 @@ export function useHlsPlayback({
   const [isMuted, setIsMuted] = useState(startMuted)
   const [qualityOptions, setQualityOptions] = useState<PlaybackQualityOption[]>([])
   const [audioTrackOptions, setAudioTrackOptions] = useState<PlaybackAudioTrackOption[]>([])
+  const [playbackEngine, setPlaybackEngine] = useState<PlaybackEngine>('none')
 
   const destroyPlayer = useCallback(() => {
     hlsRef.current?.destroy()
@@ -293,27 +304,26 @@ export function useHlsPlayback({
     destroyPlayer()
     setQualityOptions([])
     setAudioTrackOptions([])
+    setPlaybackEngine('none')
 
     if (!src) {
       return
     }
 
     let isDisposed = false
-    video.playsInline = true
-    video.muted = startMuted
-    video.autoplay = autoPlay
-    video.preload = 'auto'
-    queueMicrotask(() => {
-      if (!isDisposed) {
-        lastProgressAtRef.current = Date.now()
-        lastObservedTimeRef.current = 0
-        lastRecoveryAtRef.current = 0
-        stallRecoveryCountRef.current = 0
-        setIsMuted(startMuted)
-        setInternalError(null)
-        setInternalStatus('loading')
+    let legacyFallbackUsed = false
+    let loadingFallbackTimer: number | null = null
+    let hlsNetworkFatalRecoveries = 0
+    let manifestParsed = false
+    let nativeErrorHandled = false
+    const extraCleanups: Array<() => void> = []
+
+    const clearLoadingFallbackTimer = () => {
+      if (loadingFallbackTimer != null) {
+        window.clearTimeout(loadingFallbackTimer)
+        loadingFallbackTimer = null
       }
-    })
+    }
 
     const tryPlay = async () => {
       if (!autoPlay || isDisposed) {
@@ -331,6 +341,70 @@ export function useHlsPlayback({
         }
       }
     }
+
+    const attachLegacyDirectVideo = () => {
+      if (isDisposed || legacyFallbackUsed) {
+        return
+      }
+      legacyFallbackUsed = true
+      clearLoadingFallbackTimer()
+      hlsRef.current?.destroy()
+      hlsRef.current = null
+      hlsNetworkFatalRecoveries = 0
+      manifestParsed = true
+      setQualityOptions([])
+      setAudioTrackOptions([])
+      setPlaybackEngine('legacy-video')
+      setInternalError(null)
+      setInternalStatus('loading')
+      stallRecoveryCountRef.current = 0
+      lastProgressAtRef.current = Date.now()
+
+      const onLegacyVideoError = () => {
+        if (isDisposed) {
+          return
+        }
+        setInternalStatus('error')
+        setInternalError(
+          'Stream haiwezi kucheza kwa njia ya kawaida. Jaribu chanzo kingine au gusa Play tena.',
+        )
+      }
+      video.addEventListener('error', onLegacyVideoError, { once: true })
+      extraCleanups.push(() => video.removeEventListener('error', onLegacyVideoError))
+
+      video.src = src
+      video.load()
+      void tryPlay()
+    }
+
+    const scheduleLoadingFallbackIfProxy = () => {
+      if (!looksLikeStreamProxyUrl(src) || legacyFallbackUsed) {
+        return
+      }
+      clearLoadingFallbackTimer()
+      loadingFallbackTimer = window.setTimeout(() => {
+        if (isDisposed || legacyFallbackUsed || manifestParsed) {
+          return
+        }
+        attachLegacyDirectVideo()
+      }, LEGACY_LOADING_FALLBACK_MS)
+    }
+
+    video.playsInline = true
+    video.muted = startMuted
+    video.autoplay = autoPlay
+    video.preload = 'auto'
+    queueMicrotask(() => {
+      if (!isDisposed) {
+        lastProgressAtRef.current = Date.now()
+        lastObservedTimeRef.current = 0
+        lastRecoveryAtRef.current = 0
+        stallRecoveryCountRef.current = 0
+        setIsMuted(startMuted)
+        setInternalError(null)
+        setInternalStatus('loading')
+      }
+    })
 
     const onPlaying = () => setInternalStatus('playing')
     const onWaiting = () => setInternalStatus('buffering')
@@ -360,6 +434,10 @@ export function useHlsPlayback({
       stallRecoveryCountRef.current += 1
 
       if (stallRecoveryCountRef.current >= 3) {
+        if (looksLikeStreamProxyUrl(src) && !legacyFallbackUsed && hlsRef.current) {
+          attachLegacyDirectVideo()
+          return
+        }
         setInternalStatus('error')
         setInternalError('Stream stalled repeatedly. Trying the next source.')
         return
@@ -422,6 +500,8 @@ export function useHlsPlayback({
 
     const cleanup = () => {
       isDisposed = true
+      clearLoadingFallbackTimer()
+      extraCleanups.splice(0).forEach((fn) => fn())
       video.removeEventListener('playing', onPlaying)
       video.removeEventListener('waiting', onWaiting)
       video.removeEventListener('canplay', onCanPlay)
@@ -434,6 +514,10 @@ export function useHlsPlayback({
     }
 
     const attachNativePlayback = () => {
+      clearLoadingFallbackTimer()
+      hlsRef.current?.destroy()
+      hlsRef.current = null
+      setPlaybackEngine('native')
       video.src = src
       video.load()
       void tryPlay()
@@ -449,11 +533,6 @@ export function useHlsPlayback({
       return cleanup
     }
 
-    if (video.canPlayType(LIVE_HLS_MIME)) {
-      attachNativePlayback()
-      return cleanup
-    }
-
     const attachManagedHls = async () => {
       const { default: HlsLibrary } = await import('hls.js')
 
@@ -462,6 +541,10 @@ export function useHlsPlayback({
       }
 
       if (!HlsLibrary.isSupported()) {
+        if (looksLikeStreamProxyUrl(src)) {
+          attachLegacyDirectVideo()
+          return
+        }
         queueMicrotask(() => {
           if (!isDisposed) {
             setInternalStatus('error')
@@ -472,6 +555,10 @@ export function useHlsPlayback({
         })
         return
       }
+
+      setPlaybackEngine('hls-js')
+      manifestParsed = false
+      scheduleLoadingFallbackIfProxy()
 
       const hls = new HlsLibrary({
         enableWorker: true,
@@ -500,6 +587,8 @@ export function useHlsPlayback({
       })
 
       hls.on(HlsLibrary.Events.MANIFEST_PARSED, () => {
+        manifestParsed = true
+        clearLoadingFallbackTimer()
         syncHlsMetadata()
         setInternalStatus('ready')
         void tryPlay()
@@ -523,6 +612,15 @@ export function useHlsPlayback({
         }
 
         if (data.type === HlsLibrary.ErrorTypes.NETWORK_ERROR) {
+          hlsNetworkFatalRecoveries += 1
+          if (
+            looksLikeStreamProxyUrl(src) &&
+            hlsNetworkFatalRecoveries > HLS_NETWORK_FATAL_RECOVERIES &&
+            !legacyFallbackUsed
+          ) {
+            attachLegacyDirectVideo()
+            return
+          }
           hls.startLoad()
           return
         }
@@ -532,11 +630,32 @@ export function useHlsPlayback({
           return
         }
 
+        if (looksLikeStreamProxyUrl(src) && !legacyFallbackUsed) {
+          attachLegacyDirectVideo()
+          return
+        }
+
         setInternalStatus('error')
         setInternalError(
           data.details || 'Playback failed to recover from a fatal error.',
         )
       })
+    }
+
+    if (video.canPlayType(LIVE_HLS_MIME)) {
+      const onNativeError = () => {
+        if (isDisposed || nativeErrorHandled) {
+          return
+        }
+        nativeErrorHandled = true
+        video.src = ''
+        video.load()
+        void attachManagedHls()
+      }
+      video.addEventListener('error', onNativeError)
+      extraCleanups.push(() => video.removeEventListener('error', onNativeError))
+      attachNativePlayback()
+      return cleanup
     }
 
     void attachManagedHls()
@@ -556,5 +675,6 @@ export function useHlsPlayback({
     setAudioTrack,
     play,
     requestFullscreen,
+    playbackEngine: src ? playbackEngine : 'none',
   }
 }

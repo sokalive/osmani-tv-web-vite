@@ -234,6 +234,7 @@ export function PlayerPage() {
     setAudioTrack,
     play,
     requestFullscreen,
+    playbackEngine,
   } = useHlsPlayback({
     src: hlsSrc,
     autoPlay: true,
@@ -277,6 +278,8 @@ export function PlayerPage() {
   const selectedLanguageLabel =
     languageOptions.find((option) => option.selected)?.label || 'Lugha'
 
+  const hideHlsPickers = Boolean(embedSrc || playbackEngine === 'legacy-video')
+
   const controlsVisible = overlayVisible
   const showEmbedLoading = Boolean(embedSrc && !iframeLoaded)
   const showCenterState = Boolean(
@@ -308,7 +311,9 @@ export function PlayerPage() {
             : 'Inabuffer stream ya moja kwa moja...')
         : status === 'loading'
           ? error ||
-            (activeSourceIndex > 0
+            (playbackEngine === 'legacy-video'
+              ? 'Tunajaribu uchezi wa moja kwa moja (njia ya awali)...'
+              : activeSourceIndex > 0
               ? `${currentSourceLabel} inaunganishwa...`
               : channel?.playbackMessage)
           : channel?.playbackMessage
@@ -968,7 +973,7 @@ export function PlayerPage() {
                 {embedSrc ? 'Skrini nzima' : status === 'playing' ? 'Pause' : 'Play'}
               </span>
             </button>
-            {!embedSrc ? (
+            {!hideHlsPickers ? (
               <button
                 type="button"
                 className="player-action"
@@ -983,7 +988,7 @@ export function PlayerPage() {
                 <span className="player-action__label">{selectedLanguageLabel}</span>
               </button>
             ) : null}
-            {!embedSrc ? (
+            {!hideHlsPickers ? (
               <button
                 type="button"
                 className="player-action"
