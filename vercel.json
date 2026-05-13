@@ -9,6 +9,14 @@
       "destination": "https://osmani-admin-api.onrender.com/:path*"
     },
     {
+      "source": "/stream-proxy",
+      "destination": "https://osmani-admin-api.onrender.com/stream-proxy"
+    },
+    {
+      "source": "/stream-proxy-test",
+      "destination": "https://osmani-admin-api.onrender.com/stream-proxy-test"
+    },
+    {
       "source": "/osmani-tv-proxy/:path*",
       "destination": "https://osmani-tv.onrender.com/:path*"
     },

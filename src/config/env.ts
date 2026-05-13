@@ -25,7 +25,7 @@ export const env = {
   ),
   streamProxyBaseUrl: trimTrailingSlash(
     import.meta.env.VITE_STREAM_PROXY_BASE_URL?.trim() ||
-      '/osmani-admin-proxy/stream-proxy',
+      '/stream-proxy',
   ),
   channelsPath: import.meta.env.VITE_CHANNELS_API_PATH?.trim() || '/api/channels',
   runtimeAppModesPath:
