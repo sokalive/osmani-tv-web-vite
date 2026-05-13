@@ -147,17 +147,49 @@ export async function fetchServerHealth() {
   }
 }
 
+function unwrapChannelsPayload(payload: unknown): RawChannelRecord[] {
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  if (!isPlainObject(payload)) {
+    return []
+  }
+
+  const inner =
+    payload.channels ??
+    payload.data ??
+    payload.items ??
+    payload.results ??
+    payload.rows
+
+  if (Array.isArray(inner)) {
+    return inner as RawChannelRecord[]
+  }
+
+  if (isPlainObject(inner) && Array.isArray(inner.channels)) {
+    return inner.channels as RawChannelRecord[]
+  }
+
+  return []
+}
+
 export async function fetchChannels(serverHealthOverride?: ServerHealthSnapshot | null) {
-  const payload = await osmaniAdminClient.get<RawChannelRecord[]>(env.channelsPath)
+  const payload = await osmaniAdminClient.get<unknown>(env.channelsPath, {
+    headers: {
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
+  })
+
+  const rows = unwrapChannelsPayload(payload)
   const serverHealth =
     serverHealthOverride === undefined
       ? await fetchServerHealth()
       : serverHealthOverride
-  const channels = Array.isArray(payload)
-    ? payload
-        .map((row) => toChannelViewModel(row, serverHealth))
-        .filter((channel) => channel.isActive)
-    : []
+  const channels = rows
+    .map((row) => toChannelViewModel(row, serverHealth))
+    .filter((channel) => channel.isActive)
 
   return channels.filter((channel) => channel.showInApp)
 }

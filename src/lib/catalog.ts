@@ -69,6 +69,33 @@ function asString(raw: unknown) {
   return typeof raw === 'string' ? raw.trim() : ''
 }
 
+function asStringLoose(raw: unknown) {
+  if (typeof raw === 'string') {
+    return raw.trim()
+  }
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return String(raw)
+  }
+  return ''
+}
+
+function pickRecord(value: unknown): Record<string, unknown> | null {
+  if (value != null && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>
+  }
+  return null
+}
+
+function coalesceString(...values: unknown[]) {
+  for (const value of values) {
+    const next = asStringLoose(value)
+    if (next) {
+      return next
+    }
+  }
+  return ''
+}
+
 function sanitizeHttpOriginOrReferer(raw: unknown) {
   const value = asString(raw)
   if (!value) {
@@ -290,18 +317,44 @@ function buildCanonicalPlaybackUrl(
 }
 
 export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
+  const streamBlock =
+    pickRecord(raw.stream) ??
+    pickRecord(raw.stream_config) ??
+    pickRecord(raw.streamConfig) ??
+    pickRecord(raw.streamSettings)
+  const playbackBlock =
+    pickRecord(raw.playback) ??
+    pickRecord(raw.playback_settings) ??
+    pickRecord(raw.playbackSettings)
+  const headersBlock =
+    pickRecord(raw.stream_headers) ??
+    pickRecord(raw.streamHeaders) ??
+    pickRecord(raw.headers)
+
   return {
-    id: String(raw.id ?? raw._id ?? raw.channel_id ?? ''),
-    name: asString(raw.name) || 'Untitled channel',
-    category: asString(raw.category) || 'General',
+    id: String(
+      raw.id ??
+        raw._id ??
+        raw.channel_id ??
+        streamBlock?.id ??
+        playbackBlock?.id ??
+        '',
+    ),
+    name: coalesceString(raw.name, streamBlock?.name, playbackBlock?.name) || 'Untitled channel',
+    category: coalesceString(raw.category, streamBlock?.category) || 'General',
     displaySection:
-      asString(raw.displaySection ?? raw.display_section) || '',
+      coalesceString(raw.displaySection, raw.display_section, streamBlock?.displaySection) || '',
     bottomTab:
-      asString(raw.bottomTabsDisplay) || asString(raw.bottomTab) || 'General',
+      coalesceString(raw.bottomTabsDisplay, raw.bottomTab, raw.bottom_tab, streamBlock?.bottomTab) ||
+      'General',
     thumbnailUrl:
-      asString(raw.thumbnailUrl ?? raw.thumbnail_url) ||
-      asString(raw.thumbnail) ||
-      null,
+      coalesceString(
+        raw.thumbnailUrl,
+        raw.thumbnail_url,
+        raw.thumbnail,
+        streamBlock?.thumbnailUrl,
+        streamBlock?.thumbnail_url,
+      ) || null,
     isLive: asBoolean(raw.isLive, asBoolean(raw.live, true)),
     isHD:
       raw.isHD !== undefined
@@ -317,18 +370,110 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
         ? 'premium'
         : 'free',
     accessPremium: asBoolean(raw.accessPremium, asBoolean(raw.access_premium)),
-    playerType: normalizePlayerType(raw.playerType ?? raw.player_type),
-    url: asString(raw.url ?? raw.stream_url),
-    backupStream1: asString(raw.backupStream1 ?? raw.backup_stream_1),
-    backupStream2: asString(raw.backupStream2 ?? raw.backup_stream_2),
-    playbackUrl: asString(raw.playbackUrl ?? raw.playback_url),
-    backupPlayback1: asString(raw.backupPlayback1 ?? raw.backup_playback_1),
-    backupPlayback2: asString(raw.backupPlayback2 ?? raw.backup_playback_2),
-    deliveryPath: asString(raw.deliveryPath ?? raw.delivery_path),
-    streamProxy: asString(raw.streamProxy ?? raw.stream_proxy),
-    origin: asString(raw.origin ?? raw.stream_origin),
-    referer: asString(raw.referer ?? raw.referrer),
-    userAgent: asString(raw.userAgent ?? raw.user_agent),
+    playerType: normalizePlayerType(
+      raw.playerType ?? raw.player_type ?? streamBlock?.playerType ?? streamBlock?.player_type,
+    ),
+    url: coalesceString(
+      raw.url,
+      raw.stream_url,
+      raw.streamUrl,
+      raw.streamURL,
+      raw.primary_stream,
+      raw.primaryStream,
+      raw.hls_url,
+      raw.hlsUrl,
+      raw.manifest_url,
+      raw.manifestUrl,
+      streamBlock?.url,
+      streamBlock?.stream_url,
+      streamBlock?.streamUrl,
+      streamBlock?.hls_url,
+      playbackBlock?.url,
+      playbackBlock?.stream_url,
+    ),
+    backupStream1: coalesceString(
+      raw.backupStream1,
+      raw.backup_stream_1,
+      streamBlock?.backupStream1,
+      streamBlock?.backup_stream_1,
+    ),
+    backupStream2: coalesceString(
+      raw.backupStream2,
+      raw.backup_stream_2,
+      streamBlock?.backupStream2,
+      streamBlock?.backup_stream_2,
+    ),
+    playbackUrl: coalesceString(
+      raw.playbackUrl,
+      raw.playback_url,
+      raw.canonicalPlaybackUrl,
+      raw.canonical_playback_url,
+      raw.backendPlaybackUrl,
+      raw.backend_playback_url,
+      playbackBlock?.playbackUrl,
+      playbackBlock?.playback_url,
+      playbackBlock?.url,
+    ),
+    backupPlayback1: coalesceString(
+      raw.backupPlayback1,
+      raw.backup_playback_1,
+      playbackBlock?.backupPlayback1,
+      playbackBlock?.backup_playback_1,
+    ),
+    backupPlayback2: coalesceString(
+      raw.backupPlayback2,
+      raw.backup_playback_2,
+      playbackBlock?.backupPlayback2,
+      playbackBlock?.backup_playback_2,
+    ),
+    deliveryPath: coalesceString(
+      raw.deliveryPath,
+      raw.delivery_path,
+      raw.deliveryMode,
+      raw.delivery_mode,
+      streamBlock?.deliveryPath,
+      streamBlock?.delivery_path,
+      playbackBlock?.deliveryPath,
+      playbackBlock?.delivery_path,
+    ),
+    streamProxy: coalesceString(
+      raw.streamProxy,
+      raw.stream_proxy,
+      raw.stream_proxy_url,
+      raw.streamProxyUrl,
+      streamBlock?.streamProxy,
+      streamBlock?.stream_proxy,
+      playbackBlock?.streamProxy,
+    ),
+    origin: coalesceString(
+      raw.origin,
+      raw.stream_origin,
+      headersBlock?.origin,
+      streamBlock?.origin,
+      playbackBlock?.origin,
+    ),
+    referer: coalesceString(
+      raw.referer,
+      raw.referrer,
+      raw.referer_url,
+      raw.referrer_url,
+      raw.stream_referer,
+      headersBlock?.referer,
+      headersBlock?.referrer,
+      streamBlock?.referer,
+      streamBlock?.referrer,
+      playbackBlock?.referer,
+    ),
+    userAgent: coalesceString(
+      raw.userAgent,
+      raw.user_agent,
+      raw.ua,
+      headersBlock?.userAgent,
+      headersBlock?.user_agent,
+      streamBlock?.userAgent,
+      streamBlock?.user_agent,
+      playbackBlock?.userAgent,
+    ),
   }
 }
 
@@ -547,6 +692,40 @@ export function toChannelViewModel(
       userAgent: channel.userAgent,
     },
   }
+}
+
+export function channelPlaybackDigest(
+  channel:
+    | Pick<
+        ChannelViewModel,
+        | 'id'
+        | 'playerType'
+        | 'playbackCandidates'
+        | 'streamHeaders'
+        | 'usesCanonicalPlayback'
+        | 'playbackReadiness'
+      >
+    | null
+    | undefined,
+): string {
+  if (!channel) {
+    return ''
+  }
+
+  return JSON.stringify({
+    id: channel.id,
+    pt: channel.playerType,
+    c: channel.playbackCandidates.map((row) => ({
+      i: row.id,
+      pu: row.playbackUrl,
+      su: row.sourceUrl,
+      e: row.embedPlayback,
+      m: row.isDirectManifest,
+    })),
+    sh: channel.streamHeaders,
+    uc: channel.usesCanonicalPlayback,
+    pr: channel.playbackReadiness,
+  })
 }
 
 export function deriveCategories(channels: ChannelViewModel[]) {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { env } from '../config/env'
-import { pickDefaultChannel } from '../lib/catalog'
+import { pickDefaultChannel, channelPlaybackDigest } from '../lib/catalog'
 import type { CatalogBootstrap, ChannelViewModel, WhatsappSettings } from '../types/osmani'
 import {
   fetchBanners,
@@ -123,10 +123,18 @@ export function useCatalogBootstrap({
             current.selectedChannel?.id || env.defaultChannelId,
           )
 
+          const prevSelected = current.selectedChannel
+          let selectionPlaybackStale = false
+          if (prevSelected && nextSelected && prevSelected.id === nextSelected.id) {
+            selectionPlaybackStale =
+              channelPlaybackDigest(prevSelected) !== channelPlaybackDigest(nextSelected)
+          }
+
           if (
             current.data &&
             previousSignature === signature &&
             current.selectedChannel?.id === nextSelected?.id &&
+            !selectionPlaybackStale &&
             !current.loading &&
             current.error == null
           ) {
@@ -292,6 +300,9 @@ export function useCatalogBootstrap({
       subscribeRealtimeEvent('channels_changed', () => scheduleSilentReload(250)),
       subscribeRealtimeEvent('channel_changed', () => scheduleSilentReload(250)),
       subscribeRealtimeEvent('channel_updated', () => scheduleSilentReload(250)),
+      subscribeRealtimeEvent('channel_saved', () => scheduleSilentReload(250)),
+      subscribeRealtimeEvent('channels_updated', () => scheduleSilentReload(250)),
+      subscribeRealtimeEvent('catalog_updated', () => scheduleSilentReload(250)),
       subscribeRealtimeEvent('banners_changed', () => scheduleSilentReload(250)),
       subscribeRealtimeEvent('banner_changed', () => scheduleSilentReload(250)),
       subscribeRealtimeEvent('banner_updated', () => scheduleSilentReload(250)),

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useCatalogOutlet } from '../app/catalogOutlet'
+import { channelPlaybackDigest } from '../lib/catalog'
 import { useHlsPlayback } from '../hooks/useHlsPlayback'
 import {
   PING_MS,
@@ -204,6 +205,11 @@ export function PlayerPage() {
 
     return selectedChannel
   }, [data?.channels, params.channelId, selectedChannel])
+
+  const playbackFingerprint = useMemo(
+    () => (channel ? channelPlaybackDigest(channel) : ''),
+    [channel],
+  )
 
   const activeSource = channel?.playbackCandidates[activeSourceIndex] ?? null
   const embedPlayback = Boolean(
@@ -470,10 +476,14 @@ export function PlayerPage() {
   }, [unlockOrientation])
 
   useEffect(() => {
+    if (!playbackFingerprint) {
+      return
+    }
+
     setActiveSourceIndex(0)
-    setRetryToken(0)
+    setRetryToken((token) => token + 1)
     failoverAttemptRef.current = ''
-  }, [channel?.id])
+  }, [playbackFingerprint])
 
   useEffect(() => {
     if (!channel?.playbackCandidates.length) {
