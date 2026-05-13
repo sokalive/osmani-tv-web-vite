@@ -1,16 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { env } from '../config/env'
 import { pickDefaultChannel } from '../lib/catalog'
-import type {
-  AppModeSettings,
-  CatalogBootstrap,
-  ChannelViewModel,
-  WhatsappSettings,
-} from '../types/osmani'
+import type { CatalogBootstrap, ChannelViewModel, WhatsappSettings } from '../types/osmani'
 import {
   fetchBanners,
   fetchCategories,
   fetchChannels,
+  fetchRuntimeAppModes,
   fetchServerHealth,
   fetchWhatsappSettings,
 } from '../services/api/osmaniAdminService'
@@ -31,16 +27,11 @@ type UseCatalogBootstrapOptions = {
   backgroundPollingEnabled?: boolean
 }
 
-const VISIBLE_REVALIDATE_MS = 15000
+const VISIBLE_REVALIDATE_MS = 8000
 const HIDDEN_REVALIDATE_MS = 45000
 const PLAYER_ROUTE_REVALIDATE_MS = 60000
 const FOCUS_REVALIDATE_MS = 4000
 const SSE_RELOAD_DEBOUNCE_MS = 500
-const DEFAULT_PUBLIC_SETTINGS: AppModeSettings = {
-  freeMode: false,
-  emergencyMode: false,
-  maintenanceMode: false,
-}
 
 function applyFreeModeToChannels(
   channels: ChannelViewModel[],
@@ -63,14 +54,15 @@ async function loadCatalogSnapshot() {
     /(?:^|\/)api\/settings\/whatsapp(?:$|[/?#])/i.test(env.whatsappSettingsPath)
       ? fetchWhatsappSettings().catch(() => null as WhatsappSettings | null)
       : Promise.resolve(null as WhatsappSettings | null)
-  const [serverHealth, banners, whatsappSettings, channels] = await Promise.all([
-    serverHealthPromise,
-    bannersPromise,
-    whatsappSettingsPromise,
-    serverHealthPromise.then((health) => fetchChannels(health)),
-  ])
+  const [serverHealth, banners, whatsappSettings, channels, settings] =
+    await Promise.all([
+      serverHealthPromise,
+      bannersPromise,
+      whatsappSettingsPromise,
+      serverHealthPromise.then((health) => fetchChannels(health)),
+      fetchRuntimeAppModes(),
+    ])
 
-  const settings = DEFAULT_PUBLIC_SETTINGS
   const effectiveChannels = applyFreeModeToChannels(channels, settings.freeMode)
   const categories = await fetchCategories(effectiveChannels)
 
@@ -293,6 +285,7 @@ export function useCatalogBootstrap({
   useEffect(() => {
     const subscriptions = [
       subscribeRealtimeEvent('app_settings_changed', () => scheduleSilentReload()),
+      subscribeRealtimeEvent('app_modes_changed', () => scheduleSilentReload()),
       subscribeRealtimeEvent('popup_settings_changed', () => scheduleSilentReload()),
       subscribeRealtimeEvent('whatsapp_settings_changed', () => scheduleSilentReload()),
       subscribeRealtimeEvent('server_health_changed', () => scheduleSilentReload(250)),

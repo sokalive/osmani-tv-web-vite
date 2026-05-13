@@ -28,6 +28,9 @@ export const env = {
       '/osmani-admin-proxy/stream-proxy',
   ),
   channelsPath: import.meta.env.VITE_CHANNELS_API_PATH?.trim() || '/api/channels',
+  runtimeAppModesPath:
+    import.meta.env.VITE_RUNTIME_APP_MODES_PATH?.trim() ||
+    '/api/runtime/app-modes',
   settingsPath: import.meta.env.VITE_SETTINGS_API_PATH?.trim() || '/api/settings',
   bannersPath: import.meta.env.VITE_BANNERS_API_PATH?.trim() || '/api/banners',
   popupSettingsPath:

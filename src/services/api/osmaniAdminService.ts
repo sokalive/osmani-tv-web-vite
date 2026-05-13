@@ -44,8 +44,21 @@ function pickBoolean(...values: unknown[]) {
   return false
 }
 
+function unwrapEnvelope(payload: unknown): unknown {
+  if (!isPlainObject(payload)) {
+    return payload
+  }
+
+  if (isPlainObject(payload.data)) {
+    return payload.data
+  }
+
+  return payload
+}
+
 function normalizeAppSettings(payload: unknown): AppModeSettings {
-  const body = isPlainObject(payload) ? payload : {}
+  const unwrapped = unwrapEnvelope(payload)
+  const body = isPlainObject(unwrapped) ? unwrapped : {}
   const appModes = isPlainObject(body.app_modes)
     ? body.app_modes
     : isPlainObject(body.appModes)
@@ -71,6 +84,20 @@ function normalizeAppSettings(payload: unknown): AppModeSettings {
       body.maintenance_mode,
       body.maintenanceMode,
     ),
+  }
+}
+
+export async function fetchRuntimeAppModes(): Promise<AppModeSettings> {
+  try {
+    const path = env.runtimeAppModesPath.trim() || '/api/runtime/app-modes'
+    const payload = await osmaniAdminClient.get<unknown>(path)
+    return normalizeAppSettings(payload)
+  } catch {
+    return {
+      freeMode: false,
+      emergencyMode: false,
+      maintenanceMode: false,
+    }
   }
 }
 

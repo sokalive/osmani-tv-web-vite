@@ -28,6 +28,7 @@ const KNOWN_EVENTS = [
   'server_health_changed',
   'subscription_revoked',
   'app_settings_changed',
+  'app_modes_changed',
   'app_version_changed',
   'app_version',
   'settings',
