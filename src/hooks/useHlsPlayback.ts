@@ -449,7 +449,10 @@ export function useHlsPlayback({
       return cleanup
     }
 
-    if (video.canPlayType(LIVE_HLS_MIME)) {
+    const preferManagedHlsForProxy =
+      /stream-proxy|stream_proxy|osmani-admin-proxy/i.test(src)
+
+    if (!preferManagedHlsForProxy && video.canPlayType(LIVE_HLS_MIME)) {
       attachNativePlayback()
       return cleanup
     }
@@ -462,6 +465,11 @@ export function useHlsPlayback({
       }
 
       if (!HlsLibrary.isSupported()) {
+        if (preferManagedHlsForProxy && video.canPlayType(LIVE_HLS_MIME)) {
+          attachNativePlayback()
+          return
+        }
+
         queueMicrotask(() => {
           if (!isDisposed) {
             setInternalStatus('error')
@@ -474,7 +482,7 @@ export function useHlsPlayback({
       }
 
       const hls = new HlsLibrary({
-        enableWorker: true,
+        enableWorker: !preferManagedHlsForProxy,
         lowLatencyMode: false,
         liveDurationInfinity: true,
         backBufferLength: 30,

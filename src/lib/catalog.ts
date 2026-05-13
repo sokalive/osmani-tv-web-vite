@@ -159,6 +159,40 @@ function looksLikeProxyEndpoint(value: string) {
   return /(?:^|\/)(?:stream-proxy|stream_proxy)(?:$|[/?#])/i.test(value)
 }
 
+/**
+ * Browsers block plain http:// media from https:// pages (mixed active content).
+ * Exo/Android can play http .m3u8 directly; the web app must route those manifests
+ * through stream-proxy on secure origins so fetches originate from https.
+ */
+function enforceSecureOriginHttpHlsThroughProxy(
+  channel: Pick<ChannelRow, 'streamProxy' | 'origin' | 'referer' | 'userAgent'>,
+  candidateUrl: string,
+): string {
+  if (typeof window === 'undefined' || !window.isSecureContext) {
+    return candidateUrl
+  }
+
+  if (!candidateUrl || !/^http:\/\//i.test(candidateUrl)) {
+    return candidateUrl
+  }
+
+  if (!isLikelyHlsManifestUrl(candidateUrl)) {
+    return candidateUrl
+  }
+
+  if (looksLikeProxyEndpoint(candidateUrl)) {
+    return candidateUrl
+  }
+
+  const headers = {
+    origin: sanitizeHttpOriginOrReferer(channel.origin),
+    referer: sanitizeHttpOriginOrReferer(channel.referer),
+    userAgent: channel.userAgent,
+  }
+
+  return toProxyUrl(resolveProxyBaseUrl(channel.streamProxy), candidateUrl, headers)
+}
+
 function isProxyDeliveryToken(value: string) {
   const token = value.trim().toLowerCase()
   return (
@@ -363,7 +397,10 @@ function createPlaybackCandidates(channel: ChannelRow) {
 
   if (canonicalSources.some((source) => source.url)) {
     return canonicalSources.reduce<PlaybackCandidate[]>((list, source) => {
-      const playbackUrl = buildCanonicalPlaybackUrl(channel, source.url)
+      const playbackUrl = enforceSecureOriginHttpHlsThroughProxy(
+        channel,
+        buildCanonicalPlaybackUrl(channel, source.url),
+      )
       if (!playbackUrl) {
         return list
       }
@@ -401,7 +438,10 @@ function createPlaybackCandidates(channel: ChannelRow) {
       return list
     }
 
-    const playbackUrl = toProxyUrl(compatibilityProxyBaseUrl, source.url, headers)
+    const playbackUrl = enforceSecureOriginHttpHlsThroughProxy(
+      channel,
+      toProxyUrl(compatibilityProxyBaseUrl, source.url, headers),
+    )
     const hlsLike = isLikelyHlsManifestUrl(playbackUrl)
     list.push({
       id: source.id,
