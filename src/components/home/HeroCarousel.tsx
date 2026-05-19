@@ -42,9 +42,11 @@ function HeroSlide({
     <>
       {!imageFailed && slide.imageUrl ? (
         <img
+          className="protected-media__asset"
           src={slide.imageUrl}
           alt={slide.title}
           loading={active ? 'eager' : 'lazy'}
+          draggable={false}
           onError={() => setImageFailed(true)}
         />
       ) : (
@@ -74,13 +76,13 @@ function HeroSlide({
   )
 
   if (!channel) {
-    return <div className="hero-carousel__slide">{content}</div>
+    return <div className="hero-carousel__slide protected-media">{content}</div>
   }
 
   return (
     <button
       type="button"
-      className="hero-carousel__slide hero-carousel__slide--pressable"
+      className="hero-carousel__slide hero-carousel__slide--pressable protected-media"
       onClick={() => onSelectChannel(channel)}
     >
       {content}

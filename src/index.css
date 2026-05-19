@@ -4723,3 +4723,58 @@ svg {
     margin: 0 auto;
   }
 }
+
+/* --- Website-only content protection (see ContentProtection.tsx) --- */
+
+.protected-media,
+.protected-media .protected-media__asset {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.protected-media img,
+.protected-media video,
+.protected-media iframe {
+  -webkit-touch-callout: none;
+}
+
+.content-protection--concealed .protected-media,
+.content-protection--concealed .protected-media img,
+.content-protection--concealed .protected-media video,
+.content-protection--concealed .protected-media iframe {
+  filter: blur(22px) brightness(0.35);
+  transition: filter 160ms ease;
+}
+
+.content-protection-shield {
+  position: fixed;
+  inset: 0;
+  z-index: 9996;
+  pointer-events: none;
+  background: rgba(5, 8, 14, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.content-protection-warning {
+  position: fixed;
+  left: 50%;
+  bottom: max(18px, env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 9997;
+  max-width: min(92vw, 420px);
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: rgba(12, 16, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: var(--shadow);
+  pointer-events: none;
+}
+
+.content-protection-warning p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--white);
+}

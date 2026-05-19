@@ -857,7 +857,7 @@ export function PlayerPage() {
     <section className={`player-screen${immersiveActive ? ' player-screen--immersive' : ''}`}>
       <div
         ref={surfaceRef}
-        className={`player-screen__surface${
+        className={`player-screen__surface protected-media${
           embedSrc ? ' player-screen__surface--embed' : ''
         }${immersiveActive ? ' player-screen__surface--immersive' : ''}${
           surfaceReady ? ' player-screen__surface--ready' : ''

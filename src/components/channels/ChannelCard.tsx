@@ -16,9 +16,14 @@ export function ChannelCard({ channel, onSelect }: ChannelCardProps) {
       onClick={() => onSelect(channel)}
       aria-label={`Open ${channel.name}`}
     >
-      <div className="catalog-card__poster">
+      <div className="catalog-card__poster protected-media">
         {channel.thumbnailUrl ? (
-          <img src={channel.thumbnailUrl} alt={channel.name} />
+          <img
+            className="protected-media__asset"
+            src={channel.thumbnailUrl}
+            alt={channel.name}
+            draggable={false}
+          />
         ) : (
           <div className="catalog-card__placeholder">
             {channel.name.slice(0, 1).toUpperCase()}
