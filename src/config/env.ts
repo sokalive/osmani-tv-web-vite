@@ -4,6 +4,32 @@ const parseInteger = (value: string | undefined, fallback: number) => {
   return Number.isFinite(parsed) ? Math.trunc(parsed) : fallback
 }
 
+/** Same-origin admin proxy used for catalog, payments, and subscriptions. */
+function resolveAdminApiUrl() {
+  return trimTrailingSlash(
+    import.meta.env.VITE_OSMANI_ADMIN_API_URL?.trim() || '/osmani-admin-proxy',
+  )
+}
+
+/**
+ * Payment calls use the admin API proxy by default (matches APK upstream).
+ * Legacy `/api/osmani-admin-payment-proxy` serverless paths are normalized away.
+ */
+function resolveAdminPaymentProxyUrl() {
+  const adminApiUrl = resolveAdminApiUrl()
+  const configured = import.meta.env.VITE_OSMANI_ADMIN_PAYMENT_PROXY_URL?.trim()
+
+  if (!configured) {
+    return adminApiUrl
+  }
+
+  if (configured.includes('/api/osmani-admin-payment-proxy')) {
+    return adminApiUrl
+  }
+
+  return trimTrailingSlash(configured)
+}
+
 export const env = {
   brandName: import.meta.env.VITE_BRAND_NAME?.trim() || 'Osmani TV',
   defaultChannelId: import.meta.env.VITE_DEFAULT_CHANNEL_ID?.trim() || '',
@@ -16,13 +42,8 @@ export const env = {
   osmaniTvApiUrl: trimTrailingSlash(
     import.meta.env.VITE_OSMANI_TV_API_URL?.trim() || '/osmani-tv-proxy',
   ),
-  osmaniAdminApiUrl: trimTrailingSlash(
-    import.meta.env.VITE_OSMANI_ADMIN_API_URL?.trim() || '/osmani-admin-proxy',
-  ),
-  osmaniAdminPaymentProxyUrl: trimTrailingSlash(
-    import.meta.env.VITE_OSMANI_ADMIN_PAYMENT_PROXY_URL?.trim() ||
-      '/osmani-admin-payment-proxy',
-  ),
+  osmaniAdminApiUrl: resolveAdminApiUrl(),
+  osmaniAdminPaymentProxyUrl: resolveAdminPaymentProxyUrl(),
   streamProxyBaseUrl: trimTrailingSlash(
     import.meta.env.VITE_STREAM_PROXY_BASE_URL?.trim() ||
       '/stream-proxy',

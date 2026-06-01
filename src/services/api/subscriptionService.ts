@@ -6,7 +6,6 @@ import type {
 } from '../../types/osmani'
 import { env } from '../../config/env'
 import { osmaniAdminClient } from './osmaniAdminClient'
-import { osmaniAdminPaymentClient } from './osmaniAdminPaymentClient'
 
 type PlainObject = Record<string, unknown>
 
@@ -529,6 +528,88 @@ function pickOrderId(body: PlainObject) {
   )
 }
 
+type CheckoutPaymentProvider = 'sonicpesa' | 'zenopay'
+
+function normalizePaymentPhone(phone: string) {
+  const digits = String(phone || '').replace(/\s/g, '')
+  if (!digits) {
+    return ''
+  }
+
+  if (digits.startsWith('0') && digits.length === 10) {
+    return `255${digits.slice(1)}`
+  }
+
+  if (digits.startsWith('+')) {
+    return digits.slice(1)
+  }
+
+  return digits
+}
+
+async function resolveActiveCheckoutProvider(): Promise<CheckoutPaymentProvider> {
+  try {
+    const payload = await osmaniAdminClient.get<unknown>(
+      '/api/payments/checkout-providers',
+      { timeoutMs: PAYMENT_REQUEST_TIMEOUT_MS },
+    )
+
+    if (!isPlainObject(payload)) {
+      return 'sonicpesa'
+    }
+
+    const configured = pickString(
+      payload.payment_provider,
+      payload.paymentProvider,
+      payload.active_provider,
+      payload.activeProvider,
+    )?.toLowerCase()
+
+    if (configured === 'sonicpesa' || configured === 'sonic') {
+      return 'sonicpesa'
+    }
+
+    if (configured === 'zenopay' || configured === 'zeno') {
+      return 'zenopay'
+    }
+
+    if (payload.sonicpesa === true && payload.zenopay !== true) {
+      return 'sonicpesa'
+    }
+
+    if (payload.zenopay === true && payload.sonicpesa !== true) {
+      return 'zenopay'
+    }
+
+    return 'sonicpesa'
+  } catch {
+    return 'sonicpesa'
+  }
+}
+
+function rethrowPaymentStartError(error: unknown): never {
+  const responseBody =
+    error instanceof Error && 'responseBody' in error
+      ? String((error as { responseBody?: string }).responseBody || '')
+      : ''
+
+  if (responseBody) {
+    let parsed: PlainObject | null = null
+    try {
+      parsed = JSON.parse(responseBody) as PlainObject
+    } catch {
+      parsed = null
+    }
+
+    const message = parsed ? pickString(parsed.error, parsed.message) : null
+    if (message) {
+      throw new Error(message, { cause: error })
+    }
+  }
+
+  throw error
+}
+
 function mapOfferRedeemErrorMessage(body: PlainObject, httpStatus?: number) {
   const joined = `${pickString(body.error, body.message) || ''} ${
     pickString(body.code, body.reason) || ''
@@ -583,7 +664,7 @@ export async function verifySubscription(
   deviceId: string,
   deviceFingerprint: string,
 ) {
-  const payload = await osmaniAdminPaymentClient.post<unknown>(
+  const payload = await osmaniAdminClient.post<unknown>(
     '/api/subscription/verify',
     withFingerprintAliases(deviceId, deviceFingerprint),
     { timeoutMs: SUBSCRIPTION_REQUEST_TIMEOUT_MS },
@@ -593,7 +674,7 @@ export async function verifySubscription(
 }
 
 export async function fetchSubscriptionStatus(deviceId: string) {
-  const payload = await osmaniAdminPaymentClient.get<unknown>(
+  const payload = await osmaniAdminClient.get<unknown>(
     `/api/subscription-status?device_id=${encodeURIComponent(deviceId)}`,
     { timeoutMs: SUBSCRIPTION_REQUEST_TIMEOUT_MS },
   )
@@ -804,39 +885,33 @@ export async function createPayment({
   deviceId: string
   deviceFingerprint: string
 }) {
-  const normalizedPhone = String(phone || '').replace(/\s/g, '')
+  const normalizedPhone = normalizePaymentPhone(phone)
   const normalizedPlanId =
     /^\d+$/.test(String(planId).trim()) ? Number(String(planId).trim()) : planId
+  const requestBody = {
+    phone: normalizedPhone,
+    plan_id: normalizedPlanId,
+    amount,
+    device_id: deviceId,
+    device_fingerprint: deviceFingerprint,
+    fingerprint: deviceFingerprint,
+  }
+
+  const activeProvider = await resolveActiveCheckoutProvider()
+  const createPath =
+    activeProvider === 'sonicpesa'
+      ? '/api/payments/sonicpesa/create-order'
+      : '/api/payments/create-payment'
 
   let payload: unknown
   try {
-    payload = await osmaniAdminPaymentClient.post<unknown>('/api/payments/create-payment', {
-      phone: normalizedPhone,
-      plan_id: normalizedPlanId,
-      amount,
-      device_id: deviceId,
-      device_fingerprint: deviceFingerprint,
-      fingerprint: deviceFingerprint,
-    }, { timeoutMs: PAYMENT_REQUEST_TIMEOUT_MS })
+    payload = await osmaniAdminClient.post<unknown>(
+      createPath,
+      requestBody,
+      { timeoutMs: PAYMENT_REQUEST_TIMEOUT_MS },
+    )
   } catch (error) {
-    const responseBody =
-      error instanceof Error && 'responseBody' in error
-        ? String((error as { responseBody?: string }).responseBody || '')
-        : ''
-
-    if (responseBody) {
-      try {
-        const parsed = JSON.parse(responseBody) as PlainObject
-        const message = pickString(parsed.error, parsed.message)
-        if (message) {
-          throw new Error(message, { cause: error })
-        }
-      } catch {
-        // fall through to generic error below
-      }
-    }
-
-    throw error
+    rethrowPaymentStartError(error)
   }
 
   if (!isPlainObject(payload)) {
@@ -859,7 +934,7 @@ export async function createPayment({
 export async function getPaymentStatus(orderId: string) {
   let payload: unknown
   try {
-    payload = await osmaniAdminPaymentClient.get<unknown>(
+    payload = await osmaniAdminClient.get<unknown>(
       `/api/payment-status/${encodeURIComponent(orderId)}`,
       { timeoutMs: PAYMENT_REQUEST_TIMEOUT_MS },
     )
@@ -888,7 +963,7 @@ export async function recoverSubscription(
   deviceId: string,
   deviceFingerprint: string,
 ) {
-  const payload = await osmaniAdminPaymentClient.post<unknown>(
+  const payload = await osmaniAdminClient.post<unknown>(
     '/api/subscription/recover',
     withFingerprintAliases(deviceId, deviceFingerprint),
     { timeoutMs: SUBSCRIPTION_REQUEST_TIMEOUT_MS },
@@ -902,7 +977,7 @@ export async function acknowledgeManualGift(
   deviceFingerprint: string,
   manualGiftAckKey: string,
 ) {
-  return osmaniAdminPaymentClient.post<unknown>(
+  return osmaniAdminClient.post<unknown>(
     '/api/subscription/acknowledge-manual-gift',
     withFingerprintAliases(deviceId, deviceFingerprint, {
       manual_gift_ack_key: String(manualGiftAckKey).trim(),
@@ -914,7 +989,7 @@ export async function acknowledgeManualGift(
 }
 
 export function createSubscriptionStreamUrl(deviceId: string) {
-  const baseUrl = String(env.osmaniAdminPaymentProxyUrl || '').trim()
+  const baseUrl = String(env.osmaniAdminApiUrl || '').trim()
   if (!baseUrl || typeof window === 'undefined') {
     return ''
   }
@@ -924,7 +999,7 @@ export function createSubscriptionStreamUrl(deviceId: string) {
     : new URL(baseUrl, window.location.origin).toString()
 
   return new URL(
-    `api/subscription-stream?device_id=${encodeURIComponent(deviceId)}`,
+    `/api/subscription-stream?device_id=${encodeURIComponent(deviceId)}`,
     `${resolvedBase.replace(/\/+$/, '')}/`,
   ).toString()
 }
