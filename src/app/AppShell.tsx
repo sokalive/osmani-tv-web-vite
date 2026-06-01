@@ -36,6 +36,7 @@ import {
 import { getDeviceIdentity } from '../services/auth/deviceIdentity'
 import { computeSubscriptionProgress } from '../lib/subscriptionMath'
 import { useUpdateRuntime } from '../hooks/useUpdateRuntime'
+import { isWebBrowser } from '../lib/platform'
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock'
 import type {
   ChannelViewModel,
@@ -743,7 +744,7 @@ export function AppShell() {
         onUnlockSuccess={handlePremiumUnlockSuccess}
       />
       <UpdateOverlay
-        visible={updateRuntime.state.visible}
+        visible={!isWebBrowser() && updateRuntime.state.visible}
         decision={updateRuntime.state.decision}
         info={updateRuntime.state.info}
         action={updateRuntime.state.action}

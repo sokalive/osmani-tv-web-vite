@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { env } from '../config/env'
+import { isWebBrowser } from '../lib/platform'
 import { subscribeRealtimeEvent } from '../services/realtimeSync'
 import { getDeviceIdentity } from '../services/auth/deviceIdentity'
 
@@ -146,7 +147,11 @@ function normalizeUpdateInfo(payload: unknown): UpdateInfo {
   }
 }
 
-function shouldShowOverlay(decision: UpdateDecision) {
+function shouldShowApkUpdateOverlay(decision: UpdateDecision) {
+  if (isWebBrowser()) {
+    return false
+  }
+
   return decision === 'SOFT' || decision === 'FORCE' || decision === 'PLAY_STORE'
 }
 
@@ -220,7 +225,7 @@ export function useUpdateRuntime() {
       decision: info?.decision ?? 'NONE',
       visible:
         info != null &&
-        shouldShowOverlay(info.decision) &&
+        shouldShowApkUpdateOverlay(info.decision) &&
         !(
           info.decision === 'SOFT' &&
           dismissedSignatureRef.current &&
@@ -239,6 +244,10 @@ export function useUpdateRuntime() {
 
   const checkNow = useCallback(
     async (reason: string) => {
+      if (isWebBrowser()) {
+        return null
+      }
+
       const urlBase = resolveUpdateCheckUrl()
       if (!urlBase) {
         return null
@@ -360,6 +369,10 @@ export function useUpdateRuntime() {
   }, [])
 
   useEffect(() => {
+    if (isWebBrowser()) {
+      return undefined
+    }
+
     void checkNow('app-launch')
 
     const onFocus = () => {
