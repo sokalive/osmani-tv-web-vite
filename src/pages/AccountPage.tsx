@@ -4,6 +4,10 @@ import { useCatalogOutlet } from '../app/catalogOutlet'
 import { PremiumModal } from '../components/account/PremiumModal'
 import { TransferModal } from '../components/account/TransferModal'
 import { formatSubscriptionExpiry } from '../lib/formatExpiry'
+import {
+  isSubscriptionEffectivelyActive,
+  shouldShowSubscriptionExpiry,
+} from '../lib/subscriptionActive'
 import { computeSubscriptionProgress } from '../lib/subscriptionMath'
 import { redeemOfferCode } from '../services/api/subscriptionService'
 import { getDeviceIdentity, getDeviceLabel } from '../services/auth/deviceIdentity'
@@ -107,7 +111,9 @@ export function AccountPage() {
 
   const deviceLabel = useMemo(() => getDeviceLabel(), [])
   const freeMode = data?.settings.freeMode ?? false
-  const isSubscribed = subscription?.active === true
+  const isSubscribed = isSubscriptionEffectivelyActive(subscription, {
+    nowMs: tickNowMs,
+  })
   const channels = data?.channels ?? []
   const totalChannels = channels.length
   const unlockedChannels = (() => {
@@ -303,9 +309,11 @@ export function AccountPage() {
 
   const deviceShort =
     deviceIdFull.length >= 8 ? deviceIdFull.slice(0, 8).toUpperCase() : deviceIdFull || '-'
-  const expiryValue = subscription?.expiresAt
-    ? formatSubscriptionExpiry(subscription.expiresAt)
-    : '-'
+  const expiryValue =
+    shouldShowSubscriptionExpiry(subscription, { nowMs: tickNowMs }) &&
+    subscription?.expiresAt
+      ? formatSubscriptionExpiry(subscription.expiresAt)
+      : '-'
 
   return (
     <div className="screen-page">
@@ -391,7 +399,8 @@ export function AccountPage() {
             <p>Inapakia taarifa za usajili...</p>
           ) : accountError ? (
             <p>{accountError}</p>
-          ) : subscription?.expiresAt ? (
+          ) : shouldShowSubscriptionExpiry(subscription, { nowMs: tickNowMs }) &&
+            subscription?.expiresAt ? (
             <p className="account-panel__status-copy">
               Kifurushi kinaisha {formatSubscriptionExpiry(subscription.expiresAt)}
             </p>
