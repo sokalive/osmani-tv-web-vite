@@ -54,12 +54,17 @@ export function extractStreamDirectTokenTargets(url: string | null | undefined):
   }
 }
 
-export function isStreamDirectHlsDelivery(url: string | null | undefined): boolean {
+export function isStreamDirectDeliveryUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') {
     return false
   }
 
-  if (!/\/stream-direct(?:$|[/?#])/i.test(url)) {
+  return /\/stream-direct(?:$|[/?#])/i.test(url)
+}
+
+/** Token target is .m3u8 (e.g. YCN/Bein) but still delivered via stream-direct gateway. */
+export function isStreamDirectHlsDelivery(url: string | null | undefined): boolean {
+  if (!isStreamDirectDeliveryUrl(url)) {
     return false
   }
 
@@ -75,8 +80,10 @@ export function isLikelyHlsManifestUrl(url: string | null | undefined): boolean 
     return false
   }
 
-  if (isStreamDirectHlsDelivery(url)) {
-    return true
+  // Signed stream-direct gateways (YCN/Bein, mpindo) must stay on the web embed/document
+  // route. Hls.js cannot reliably play their manifests (non-standard segments, referer chains).
+  if (isStreamDirectDeliveryUrl(url)) {
+    return false
   }
 
   const lower = url.toLowerCase()

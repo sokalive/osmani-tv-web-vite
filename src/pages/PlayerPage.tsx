@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useCatalogOutlet } from '../app/catalogOutlet'
 import { channelStreamIdentityDigest } from '../lib/catalog'
 import { logPlayback } from '../lib/playbackDebug'
+import { isStreamDirectHlsDelivery } from '../lib/playbackMime'
 import { useHlsPlayback } from '../hooks/useHlsPlayback'
 import {
   PING_MS,
@@ -217,6 +218,11 @@ export function PlayerPage() {
   const embedPlayback = Boolean(
     channel?.playbackReadiness === 'ready' && activeSource?.embedPlayback,
   )
+  const streamDirectHlsEmbed = Boolean(
+    embedPlayback &&
+      activeSource &&
+      isStreamDirectHlsDelivery(activeSource.playbackUrl),
+  )
   const embedSrc =
     embedPlayback && activeSource ? activeSource.playbackUrl : ''
   const hlsSrc =
@@ -231,6 +237,7 @@ export function PlayerPage() {
       logPlayback('embed:pinned-src', {
         channelId: channel?.id,
         mountKey: embedMountKey,
+        streamDirectHls: streamDirectHlsEmbed,
         srcPreview: embedSrc.slice(0, 120),
       })
     }
