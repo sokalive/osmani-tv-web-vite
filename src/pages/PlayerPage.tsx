@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useCatalogOutlet } from '../app/catalogOutlet'
 import { channelStreamIdentityDigest } from '../lib/catalog'
+import { logPlayback } from '../lib/playbackDebug'
 import { useHlsPlayback } from '../hooks/useHlsPlayback'
 import {
   PING_MS,
@@ -222,6 +223,21 @@ export function PlayerPage() {
     !embedPlayback && channel?.playbackReadiness === 'ready' && activeSource
       ? activeSource.playbackUrl
       : ''
+  const embedMountKey = `${channel?.id ?? ''}:${activeSourceIndex}`
+  const pinnedEmbedRef = useRef({ key: '', src: '' })
+  if (embedSrc) {
+    if (pinnedEmbedRef.current.key !== embedMountKey) {
+      pinnedEmbedRef.current = { key: embedMountKey, src: embedSrc }
+      logPlayback('embed:pinned-src', {
+        channelId: channel?.id,
+        mountKey: embedMountKey,
+        srcPreview: embedSrc.slice(0, 120),
+      })
+    }
+  } else if (pinnedEmbedRef.current.key) {
+    pinnedEmbedRef.current = { key: '', src: '' }
+  }
+  const pinnedEmbedSrc = embedSrc ? pinnedEmbedRef.current.src : ''
   const [iframeLoaded, setIframeLoaded] = useState(false)
 
   const hasNextPlaybackSource = Boolean(
@@ -251,7 +267,8 @@ export function PlayerPage() {
 
   useEffect(() => {
     setIframeLoaded(false)
-  }, [embedSrc, activeSourceIndex, channel?.id])
+    logPlayback('embed:mount-reset', { embedMountKey })
+  }, [embedMountKey])
 
   const qualityOptions = useMemo(
     () =>
@@ -288,11 +305,11 @@ export function PlayerPage() {
   const hideHlsPickers = Boolean(embedSrc || playbackEngine === 'legacy-video')
 
   const controlsVisible = overlayVisible
-  const showEmbedLoading = Boolean(embedSrc && !iframeLoaded)
+  const showEmbedLoading = Boolean(pinnedEmbedSrc && !iframeLoaded)
   const playbackEstablished =
     playbackEstablishedRef.current ||
     status === 'playing' ||
-    Boolean(embedSrc && iframeLoaded)
+    Boolean(pinnedEmbedSrc && iframeLoaded)
   const showCenterState = Boolean(
     status === 'error' ||
       (showEmbedLoading && !playbackEstablishedRef.current) ||
@@ -488,21 +505,57 @@ export function PlayerPage() {
   }, [channel?.id])
 
   useEffect(() => {
-    if (status === 'playing' || (embedSrc && iframeLoaded)) {
+    if (status === 'playing' || (pinnedEmbedSrc && iframeLoaded)) {
       playbackEstablishedRef.current = true
     }
-  }, [embedSrc, iframeLoaded, status])
+  }, [iframeLoaded, pinnedEmbedSrc, status])
 
   useEffect(() => {
     if (!streamIdentityFingerprint) {
       return
     }
 
+    logPlayback('identity:changed', {
+      channelId: channel?.id,
+      fingerprint: streamIdentityFingerprint.slice(0, 160),
+      embedPlayback,
+      hlsPreview: hlsSrc.slice(0, 120),
+    })
     setActiveSourceIndex(0)
     setRetryToken((token) => token + 1)
     failoverAttemptRef.current = ''
     playbackEstablishedRef.current = false
   }, [streamIdentityFingerprint])
+
+  useEffect(() => {
+    if (!embedSrc || pinnedEmbedSrc === embedSrc) {
+      return
+    }
+
+    logPlayback('embed:token-refresh-ignored', {
+      channelId: channel?.id,
+      mountKey: embedMountKey,
+      pinnedPreview: pinnedEmbedSrc.slice(0, 80),
+      nextPreview: embedSrc.slice(0, 80),
+    })
+  }, [channel?.id, embedMountKey, embedSrc, pinnedEmbedSrc])
+
+  useEffect(() => {
+    logPlayback('hls:src-prop', {
+      channelId: channel?.id,
+      preview: hlsSrc.slice(0, 120),
+      retryToken,
+    })
+  }, [channel?.id, hlsSrc, retryToken])
+
+  useEffect(() => {
+    logPlayback('player:status', {
+      channelId: channel?.id,
+      status,
+      playbackEngine,
+      embedPlayback,
+    })
+  }, [channel?.id, embedPlayback, playbackEngine, status])
 
   useEffect(() => {
     if (!channel?.playbackCandidates.length) {
@@ -522,7 +575,7 @@ export function PlayerPage() {
     playStartedImmersiveRetryRef.current = false
     clearHideControlsTimer()
     setOverlayVisible(true)
-  }, [channel?.id, clearHideControlsTimer, embedSrc, hlsSrc])
+  }, [channel?.id, clearHideControlsTimer, embedMountKey, embedPlayback, streamIdentityFingerprint])
 
   useEffect(() => {
     setSurfaceReady(false)
@@ -533,7 +586,7 @@ export function PlayerPage() {
     return () => {
       window.cancelAnimationFrame(frame)
     }
-  }, [accessChecking, accessDenied, channel?.id, embedSrc, hlsSrc])
+  }, [accessChecking, accessDenied, channel?.id, embedMountKey, streamIdentityFingerprint])
 
   useEffect(() => {
     if (status !== 'error' || !channel || !activeSource || !hasNextPlaybackSource) {
@@ -895,16 +948,16 @@ export function PlayerPage() {
           }
         }}
       >
-        {embedSrc ? (
+        {pinnedEmbedSrc ? (
           <div
             className={`player-screen__embed-wrap player-screen__embed-wrap--${fitMode}`}
             onClick={(event) => event.stopPropagation()}
           >
             <iframe
-              key={embedSrc}
+              key={embedMountKey}
               title={channel.name}
               className="player-screen__embed"
-              src={embedSrc}
+              src={pinnedEmbedSrc}
               allow="autoplay; fullscreen; picture-in-picture; encrypted-media; clipboard-read; clipboard-write; display-capture"
               sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups-to-escape-sandbox"
               referrerPolicy="no-referrer-when-downgrade"

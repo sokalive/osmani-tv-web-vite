@@ -1,5 +1,6 @@
 import type Hls from 'hls.js'
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { logPlayback } from '../lib/playbackDebug'
 import { isLikelyHlsManifestUrl } from '../lib/playbackMime'
 
 export type PlaybackStatus =
@@ -328,6 +329,7 @@ export function useHlsPlayback({
     ) {
       lastAttachedSrcRef.current = src
       try {
+        logPlayback('hls:soft-load-source', { srcPreview: src.slice(0, 120) })
         existingHls.loadSource?.(src)
         return () => {}
       } catch {
@@ -335,6 +337,11 @@ export function useHlsPlayback({
       }
     }
 
+    logPlayback('hls:full-reset', {
+      retryToken,
+      srcPreview: src ? src.slice(0, 120) : '',
+      reason: forceFullReset ? 'retry-token' : 'src-or-init',
+    })
     destroyPlayer()
     setQualityOptions([])
     setAudioTrackOptions([])
@@ -442,8 +449,14 @@ export function useHlsPlayback({
       }
     })
 
-    const onPlaying = () => setInternalStatus('playing')
-    const onWaiting = () => setInternalStatus('buffering')
+    const onPlaying = () => {
+      logPlayback('hls:event:playing')
+      setInternalStatus('playing')
+    }
+    const onWaiting = () => {
+      logPlayback('hls:event:waiting')
+      setInternalStatus('buffering')
+    }
     const onCanPlay = () =>
       setInternalStatus((current) => (current === 'playing' ? current : 'ready'))
     const onPause = () =>
