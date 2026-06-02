@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { env } from '../config/env'
-import { pickDefaultChannel, channelPlaybackDigest } from '../lib/catalog'
+import { pickDefaultChannel, channelStreamIdentityDigest } from '../lib/catalog'
 import type { CatalogBootstrap, ChannelViewModel, WhatsappSettings } from '../types/osmani'
 import {
   fetchBanners,
@@ -127,7 +127,8 @@ export function useCatalogBootstrap({
           let selectionPlaybackStale = false
           if (prevSelected && nextSelected && prevSelected.id === nextSelected.id) {
             selectionPlaybackStale =
-              channelPlaybackDigest(prevSelected) !== channelPlaybackDigest(nextSelected)
+              channelStreamIdentityDigest(prevSelected) !==
+              channelStreamIdentityDigest(nextSelected)
           }
 
           if (

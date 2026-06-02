@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useCatalogOutlet } from '../app/catalogOutlet'
-import { channelPlaybackDigest } from '../lib/catalog'
+import { channelStreamIdentityDigest } from '../lib/catalog'
 import { useHlsPlayback } from '../hooks/useHlsPlayback'
 import {
   PING_MS,
@@ -206,10 +206,11 @@ export function PlayerPage() {
     return selectedChannel
   }, [data?.channels, params.channelId, selectedChannel])
 
-  const playbackFingerprint = useMemo(
-    () => (channel ? channelPlaybackDigest(channel) : ''),
+  const streamIdentityFingerprint = useMemo(
+    () => (channel ? channelStreamIdentityDigest(channel) : ''),
     [channel],
   )
+  const playbackEstablishedRef = useRef(false)
 
   const activeSource = channel?.playbackCandidates[activeSourceIndex] ?? null
   const embedPlayback = Boolean(
@@ -288,13 +289,18 @@ export function PlayerPage() {
 
   const controlsVisible = overlayVisible
   const showEmbedLoading = Boolean(embedSrc && !iframeLoaded)
+  const playbackEstablished =
+    playbackEstablishedRef.current ||
+    status === 'playing' ||
+    Boolean(embedSrc && iframeLoaded)
   const showCenterState = Boolean(
-    showEmbedLoading ||
+    status === 'error' ||
+      (showEmbedLoading && !playbackEstablishedRef.current) ||
       (!embedSrc &&
+        !playbackEstablished &&
         (status === 'loading' ||
           status === 'buffering' ||
-          status === 'awaiting-user' ||
-          status === 'error')),
+          status === 'awaiting-user')),
   )
   const centerTitle = showEmbedLoading
     ? 'Inapakia kicheza...'
@@ -305,11 +311,13 @@ export function PlayerPage() {
         : status === 'awaiting-user'
           ? 'Gusa ili uanze'
           : 'Inapakia moja kwa moja...'
+  const initialPlaybackHelper =
+    channel?.playbackMessage?.trim() ||
+    'Inaunganisha stream ya moja kwa moja...'
   const centerMessage = showEmbedLoading
-    ? channel?.playbackMessage ||
-      'Kicheza cha ndani kinapakia. Gusa ndani ya skrini ukitumia chaguo za mtoaji.'
+    ? initialPlaybackHelper
     : status === 'error'
-      ? error || channel?.playbackMessage
+      ? error || initialPlaybackHelper
       : status === 'buffering'
         ? error ||
           (activeSourceIndex > 0
@@ -320,9 +328,9 @@ export function PlayerPage() {
             (playbackEngine === 'legacy-video'
               ? 'Tunajaribu uchezi wa moja kwa moja (njia ya awali)...'
               : activeSourceIndex > 0
-              ? `${currentSourceLabel} inaunganishwa...`
-              : channel?.playbackMessage)
-          : channel?.playbackMessage
+                ? `${currentSourceLabel} inaunganishwa...`
+                : initialPlaybackHelper)
+          : initialPlaybackHelper
 
   const clearHideControlsTimer = useCallback(() => {
     if (hideControlsTimerRef.current != null) {
@@ -476,14 +484,25 @@ export function PlayerPage() {
   }, [unlockOrientation])
 
   useEffect(() => {
-    if (!playbackFingerprint) {
+    playbackEstablishedRef.current = false
+  }, [channel?.id])
+
+  useEffect(() => {
+    if (status === 'playing' || (embedSrc && iframeLoaded)) {
+      playbackEstablishedRef.current = true
+    }
+  }, [embedSrc, iframeLoaded, status])
+
+  useEffect(() => {
+    if (!streamIdentityFingerprint) {
       return
     }
 
     setActiveSourceIndex(0)
     setRetryToken((token) => token + 1)
     failoverAttemptRef.current = ''
-  }, [playbackFingerprint])
+    playbackEstablishedRef.current = false
+  }, [streamIdentityFingerprint])
 
   useEffect(() => {
     if (!channel?.playbackCandidates.length) {

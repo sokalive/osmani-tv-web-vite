@@ -122,9 +122,13 @@ export function useHlsPlayback({
   const [audioTrackOptions, setAudioTrackOptions] = useState<PlaybackAudioTrackOption[]>([])
   const [playbackEngine, setPlaybackEngine] = useState<PlaybackEngine>('none')
 
+  const lastAttachedSrcRef = useRef('')
+  const lastRetryTokenRef = useRef(retryToken)
+
   const destroyPlayer = useCallback(() => {
     hlsRef.current?.destroy()
     hlsRef.current = null
+    lastAttachedSrcRef.current = ''
     lastProgressAtRef.current = 0
     lastObservedTimeRef.current = 0
     lastRecoveryAtRef.current = 0
@@ -294,11 +298,41 @@ export function useHlsPlayback({
     [syncHlsMetadata],
   )
 
+  useEffect(
+    () => () => {
+      destroyPlayer()
+    },
+    [destroyPlayer],
+  )
+
   useEffect(() => {
     const video = videoRef.current
 
     if (!video) {
       return
+    }
+
+    const forceFullReset = lastRetryTokenRef.current !== retryToken
+    lastRetryTokenRef.current = retryToken
+
+    const existingHls = hlsRef.current as
+      | (Hls & { loadSource?: (url: string) => void })
+      | null
+
+    if (
+      !forceFullReset &&
+      src &&
+      existingHls &&
+      lastAttachedSrcRef.current &&
+      lastAttachedSrcRef.current !== src
+    ) {
+      lastAttachedSrcRef.current = src
+      try {
+        existingHls.loadSource?.(src)
+        return () => {}
+      } catch {
+        destroyPlayer()
+      }
     }
 
     destroyPlayer()
@@ -309,6 +343,8 @@ export function useHlsPlayback({
     if (!src) {
       return
     }
+
+    lastAttachedSrcRef.current = src
 
     let isDisposed = false
     let legacyFallbackUsed = false
@@ -510,7 +546,6 @@ export function useHlsPlayback({
       video.removeEventListener('progress', markPlaybackProgress)
       video.removeEventListener('seeking', markPlaybackProgress)
       window.clearInterval(stallWatchdog)
-      destroyPlayer()
     }
 
     const attachNativePlayback = () => {

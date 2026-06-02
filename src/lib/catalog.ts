@@ -619,8 +619,7 @@ function getPlaybackState(channel: ChannelRow, candidates: PlaybackCandidate[]) 
   if (usesCanonicalPlayback) {
     return {
       readiness: 'ready' as PlaybackReadiness,
-      message:
-        'This channel is routed through the backend playback delivery contract for browser-safe playback.',
+      message: '',
     }
   }
 
@@ -694,6 +693,85 @@ export function toChannelViewModel(
   }
 }
 
+const VOLATILE_PLAYBACK_QUERY_KEYS = new Set([
+  'token',
+  'access_token',
+  'auth',
+  'signature',
+  'sig',
+  'expires',
+  'exp',
+  'e',
+  't',
+  'st',
+  'hdnea',
+  'hdnts',
+  'play_token',
+  'jwt',
+  'session',
+])
+
+/** Strip rotating auth query params so catalog refreshes do not look like a new stream. */
+export function normalizeUrlForStreamIdentity(url: string) {
+  const value = asString(url)
+  if (!value) {
+    return ''
+  }
+
+  try {
+    const parsed = new URL(
+      value,
+      typeof window !== 'undefined' ? window.location.origin : 'https://localhost',
+    )
+
+    ;[...parsed.searchParams.keys()].forEach((key) => {
+      if (VOLATILE_PLAYBACK_QUERY_KEYS.has(key.toLowerCase())) {
+        parsed.searchParams.delete(key)
+      }
+    })
+
+    const query = parsed.searchParams.toString()
+    return `${parsed.origin}${parsed.pathname}${query ? `?${query}` : ''}`
+  } catch {
+    return value
+  }
+}
+
+/** Stable stream identity — ignores signed URL/token churn on the same channel source. */
+export function channelStreamIdentityDigest(
+  channel:
+    | Pick<
+        ChannelViewModel,
+        | 'id'
+        | 'playerType'
+        | 'playbackCandidates'
+        | 'streamHeaders'
+        | 'usesCanonicalPlayback'
+        | 'playbackReadiness'
+      >
+    | null
+    | undefined,
+): string {
+  if (!channel) {
+    return ''
+  }
+
+  return JSON.stringify({
+    id: channel.id,
+    pt: channel.playerType,
+    c: channel.playbackCandidates.map((row) => ({
+      i: row.id,
+      su: normalizeUrlForStreamIdentity(row.sourceUrl),
+      dp: row.deliveryPath,
+      e: row.embedPlayback,
+      m: row.isDirectManifest,
+    })),
+    sh: channel.streamHeaders,
+    uc: channel.usesCanonicalPlayback,
+    pr: channel.playbackReadiness,
+  })
+}
+
 export function channelPlaybackDigest(
   channel:
     | Pick<
@@ -717,8 +795,8 @@ export function channelPlaybackDigest(
     pt: channel.playerType,
     c: channel.playbackCandidates.map((row) => ({
       i: row.id,
-      pu: row.playbackUrl,
-      su: row.sourceUrl,
+      pu: normalizeUrlForStreamIdentity(row.playbackUrl),
+      su: normalizeUrlForStreamIdentity(row.sourceUrl),
       e: row.embedPlayback,
       m: row.isDirectManifest,
     })),
