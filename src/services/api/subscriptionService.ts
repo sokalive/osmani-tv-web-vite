@@ -528,7 +528,76 @@ function pickOrderId(body: PlainObject) {
   )
 }
 
-type CheckoutPaymentProvider = 'sonicpesa' | 'zenopay'
+export type CheckoutPaymentProvider = 'sonicpesa' | 'zenopay' | 'auraxpay'
+
+export type CheckoutProvidersState = {
+  provider: CheckoutPaymentProvider
+  zenopay: boolean
+  sonicpesa: boolean
+  auraxpay: boolean
+}
+
+const DEFAULT_CHECKOUT_PROVIDERS: CheckoutProvidersState = {
+  provider: 'sonicpesa',
+  zenopay: false,
+  sonicpesa: true,
+  auraxpay: false,
+}
+
+function parseCheckoutProvidersPayload(payload: unknown): CheckoutProvidersState {
+  if (!isPlainObject(payload)) {
+    return DEFAULT_CHECKOUT_PROVIDERS
+  }
+
+  const zenopay = payload.zenopay === true
+  const sonicpesa = payload.sonicpesa === true
+  const auraxpay = payload.auraxpay === true
+
+  const configured = pickString(
+    payload.payment_provider,
+    payload.paymentProvider,
+    payload.active_provider,
+    payload.activeProvider,
+  )?.toLowerCase()
+
+  if (configured === 'auraxpay' || configured === 'aurax') {
+    return { provider: 'auraxpay', zenopay, sonicpesa, auraxpay }
+  }
+
+  if (configured === 'sonicpesa' || configured === 'sonic') {
+    return { provider: 'sonicpesa', zenopay, sonicpesa, auraxpay }
+  }
+
+  if (configured === 'zenopay' || configured === 'zeno') {
+    return { provider: 'zenopay', zenopay, sonicpesa, auraxpay }
+  }
+
+  if (auraxpay && !sonicpesa && !zenopay) {
+    return { provider: 'auraxpay', zenopay, sonicpesa, auraxpay }
+  }
+
+  if (sonicpesa && !zenopay && !auraxpay) {
+    return { provider: 'sonicpesa', zenopay, sonicpesa, auraxpay }
+  }
+
+  if (zenopay && !sonicpesa && !auraxpay) {
+    return { provider: 'zenopay', zenopay, sonicpesa, auraxpay }
+  }
+
+  return { provider: 'sonicpesa', zenopay, sonicpesa, auraxpay }
+}
+
+function resolvePaymentCreatePath(provider: CheckoutPaymentProvider) {
+  if (provider === 'sonicpesa') {
+    return '/api/payments/sonicpesa/create-order'
+  }
+
+  if (provider === 'auraxpay') {
+    return '/api/payments/auraxpay/create-order'
+  }
+
+  return '/api/payments/create-payment'
+}
 
 function normalizePaymentPhone(phone: string) {
   const digits = String(phone || '').replace(/\s/g, '')
@@ -547,44 +616,22 @@ function normalizePaymentPhone(phone: string) {
   return digits
 }
 
-async function resolveActiveCheckoutProvider(): Promise<CheckoutPaymentProvider> {
+export async function getCheckoutProviders(): Promise<CheckoutProvidersState> {
   try {
     const payload = await osmaniAdminClient.get<unknown>(
       '/api/payments/checkout-providers',
       { timeoutMs: PAYMENT_REQUEST_TIMEOUT_MS },
     )
 
-    if (!isPlainObject(payload)) {
-      return 'sonicpesa'
-    }
-
-    const configured = pickString(
-      payload.payment_provider,
-      payload.paymentProvider,
-      payload.active_provider,
-      payload.activeProvider,
-    )?.toLowerCase()
-
-    if (configured === 'sonicpesa' || configured === 'sonic') {
-      return 'sonicpesa'
-    }
-
-    if (configured === 'zenopay' || configured === 'zeno') {
-      return 'zenopay'
-    }
-
-    if (payload.sonicpesa === true && payload.zenopay !== true) {
-      return 'sonicpesa'
-    }
-
-    if (payload.zenopay === true && payload.sonicpesa !== true) {
-      return 'zenopay'
-    }
-
-    return 'sonicpesa'
+    return parseCheckoutProvidersPayload(payload)
   } catch {
-    return 'sonicpesa'
+    return DEFAULT_CHECKOUT_PROVIDERS
   }
+}
+
+async function resolveActiveCheckoutProvider(): Promise<CheckoutPaymentProvider> {
+  const checkout = await getCheckoutProviders()
+  return checkout.provider
 }
 
 function rethrowPaymentStartError(error: unknown): never {
@@ -898,10 +945,7 @@ export async function createPayment({
   }
 
   const activeProvider = await resolveActiveCheckoutProvider()
-  const createPath =
-    activeProvider === 'sonicpesa'
-      ? '/api/payments/sonicpesa/create-order'
-      : '/api/payments/create-payment'
+  const createPath = resolvePaymentCreatePath(activeProvider)
 
   let payload: unknown
   try {

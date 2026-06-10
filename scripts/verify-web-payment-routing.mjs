@@ -12,10 +12,18 @@ async function main() {
 
   console.log('checkout-providers:', checkoutRes.status, checkout)
 
-  if (provider !== 'sonicpesa') {
-    console.error('Expected active provider sonicpesa, got:', provider)
+  const supported = new Set(['sonicpesa', 'zenopay', 'auraxpay'])
+  if (!supported.has(provider)) {
+    console.error('Unknown active provider:', provider)
     process.exit(1)
   }
+
+  const createPathByProvider = {
+    sonicpesa: '/api/payments/sonicpesa/create-order',
+    zenopay: '/api/payments/create-payment',
+    auraxpay: '/api/payments/auraxpay/create-order',
+  }
+  console.log('website create path:', createPathByProvider[provider] || '(unknown)')
 
   const legacyRes = await fetch(`${ADMIN}/api/payments/create-payment`, {
     method: 'POST',
@@ -60,7 +68,9 @@ async function main() {
   const statusBody = await statusRes.json()
   console.log('payment-status:', statusRes.status, statusBody)
 
-  console.log('\nOK: Website should use sonicpesa/create-order (not legacy ZenoPay create-payment).')
+  console.log(
+    `\nOK: Website routes ${provider} -> ${createPathByProvider[provider] || 'unknown'}.`,
+  )
 }
 
 main().catch((error) => {

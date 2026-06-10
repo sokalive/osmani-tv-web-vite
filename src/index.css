@@ -3132,6 +3132,65 @@ svg {
   text-transform: uppercase;
 }
 
+.premium-modal__checkout-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.premium-modal__checkout-card {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  min-height: 88px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--premium-checkout-color, #facc15) 18%, transparent),
+    rgba(255, 255, 255, 0.03)
+  );
+}
+
+.premium-modal__checkout-card--active {
+  border-color: color-mix(in srgb, var(--premium-checkout-color, #facc15) 65%, white);
+  box-shadow: 0 0 0 1px
+    color-mix(in srgb, var(--premium-checkout-color, #facc15) 25%, transparent);
+}
+
+.premium-modal__checkout-card-title {
+  color: var(--white);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.premium-modal__checkout-card-copy {
+  color: #9ca3af;
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.premium-modal__checkout-card-pill {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--premium-checkout-color, #facc15) 24%, transparent);
+  color: var(--premium-checkout-color, #facc15);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.premium-modal__wait-provider {
+  margin-top: -4px;
+  color: #9ca3af;
+  font-size: 0.78rem;
+}
+
 .premium-modal__networks {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

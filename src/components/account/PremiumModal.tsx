@@ -1,12 +1,25 @@
-import { type CSSProperties, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
+import {
+  activeCheckoutProcessorBrand,
+  listEnabledCheckoutProcessors,
+} from '../../lib/checkoutProviders'
 import {
   createPayment,
   createSubscriptionStreamUrl,
   fetchSubscriptionStatus,
+  getCheckoutProviders,
   getPaymentProviders,
   getPaymentStatus,
   getPlans,
   verifySubscription,
+  type CheckoutProvidersState,
 } from '../../services/api/subscriptionService'
 import { formatSubscriptionExpiry } from '../../lib/formatExpiry'
 import { getDeviceIdentity } from '../../services/auth/deviceIdentity'
@@ -323,6 +336,8 @@ export function PremiumModal({
   const [finalizingSuccess, setFinalizingSuccess] = useState(false)
   const [continueError, setContinueError] = useState('')
   const [providers, setProviders] = useState<PaymentProvider[]>(FALLBACK_NETWORKS)
+  const [checkoutProviders, setCheckoutProviders] =
+    useState<CheckoutProvidersState | null>(null)
   const [logoErrors, setLogoErrors] = useState<Record<string, boolean>>({})
   const pollingDoneRef = useRef(false)
   const subscriptionStreamRef = useRef<EventSource | null>(null)
@@ -336,6 +351,14 @@ export function PremiumModal({
   const isPhoneValid =
     phoneNumber.length === 10 && phoneNumber.startsWith('0')
   const compactResultStep = step === 5 || step === 6
+  const enabledCheckoutProcessors = useMemo(
+    () => listEnabledCheckoutProcessors(checkoutProviders),
+    [checkoutProviders],
+  )
+  const activeCheckoutBrand = useMemo(
+    () => activeCheckoutProcessorBrand(checkoutProviders),
+    [checkoutProviders],
+  )
 
   useBodyScrollLock(visible)
 
@@ -390,6 +413,7 @@ export function PremiumModal({
     setFinalizingSuccess(false)
     setContinueError('')
     setProviders(FALLBACK_NETWORKS)
+    setCheckoutProviders(null)
     setLogoErrors({})
   }, [closeSubscriptionStream, visible])
 
@@ -425,6 +449,30 @@ export function PremiumModal({
       } finally {
         if (!cancelled) {
           setPlansLoading(false)
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [visible])
+
+  useEffect(() => {
+    if (!visible) {
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      try {
+        const checkout = await getCheckoutProviders()
+        if (!cancelled) {
+          setCheckoutProviders(checkout)
+        }
+      } catch {
+        if (!cancelled) {
+          setCheckoutProviders(null)
         }
       }
     })()
@@ -834,6 +882,39 @@ export function PremiumModal({
               Tigo, M-Pesa, Airtel, HaloPesa
             </p>
 
+            <p className="premium-modal__networks-label premium-modal__step2-gap-clear">
+              Mtoa huduma wa malipo
+            </p>
+
+            <div className="premium-modal__checkout-grid premium-modal__step2-gap-clear">
+              {enabledCheckoutProcessors.map((processor) => {
+                const isActive = activeCheckoutBrand.id === processor.id
+                const processorStyle = {
+                  '--premium-checkout-color': processor.color,
+                } as CSSProperties
+
+                return (
+                  <div
+                    key={processor.id}
+                    className={`premium-modal__checkout-card${
+                      isActive ? ' premium-modal__checkout-card--active' : ''
+                    }`}
+                    style={processorStyle}
+                  >
+                    <strong className="premium-modal__checkout-card-title">
+                      {processor.label}
+                    </strong>
+                    <span className="premium-modal__checkout-card-copy">
+                      {processor.blurb}
+                    </span>
+                    {isActive ? (
+                      <span className="premium-modal__checkout-card-pill">Inatumika</span>
+                    ) : null}
+                  </div>
+                )
+              })}
+            </div>
+
             <label className="premium-modal__input-wrap premium-modal__step2-gap-clear">
               <PremiumIcon name="call" className="premium-modal__icon premium-modal__icon--input" />
               <input
@@ -938,6 +1019,9 @@ export function PremiumModal({
           </h2>
           <p className="premium-modal__wait-pin">
             Thibitisha malipo kwenye simu yako (PIN).
+          </p>
+          <p className="premium-modal__wait-provider">
+            Malipo kupitia {activeCheckoutBrand.label}
           </p>
 
           <div className="premium-modal__amount-pill">
