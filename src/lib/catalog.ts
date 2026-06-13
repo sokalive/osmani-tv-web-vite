@@ -1,5 +1,5 @@
 import { env } from '../config/env'
-import { isLikelyHlsManifestUrl } from './playbackMime'
+import { isLikelyHlsManifestUrl, isMpingoNurPlayerGateway } from './playbackMime'
 import type {
   BannerRecord,
   ChannelCategory,
@@ -614,6 +614,10 @@ function resolveCanonicalPlaybackCandidateUrl(
     return ''
   }
 
+  if (isMpingoNurPlayerGateway(sourceUrl)) {
+    return sourceUrl
+  }
+
   if (source.id === 'primary' && channel.proxyPlaybackUrl) {
     return resolveBackendPlaybackUrl(channel.proxyPlaybackUrl)
   }
@@ -625,7 +629,45 @@ function resolveCanonicalPlaybackCandidateUrl(
   return buildCanonicalPlaybackUrl(channel, sourceUrl)
 }
 
+function createAppParityMpingoCandidates(channel: ChannelRow) {
+  const appStyleSources = [
+    { id: 'primary', label: 'Primary', url: channel.url },
+    { id: 'backup-1', label: 'Backup 1', url: channel.backupStream1 },
+    { id: 'backup-2', label: 'Backup 2', url: channel.backupStream2 },
+  ]
+
+  if (!isMpingoNurPlayerGateway(channel.url)) {
+    return null
+  }
+
+  return appStyleSources.reduce<PlaybackCandidate[]>((list, source) => {
+    const playbackUrl = asString(source.url)
+    if (!playbackUrl || !isMpingoNurPlayerGateway(playbackUrl)) {
+      return list
+    }
+
+    list.push({
+      id: source.id,
+      label: source.label,
+      sourceUrl: playbackUrl,
+      playbackUrl,
+      deliveryPath: '',
+      streamProxy: '',
+      usesBackendDelivery: false,
+      isDirectManifest: false,
+      embedPlayback: true,
+    })
+
+    return list
+  }, [])
+}
+
 function createPlaybackCandidates(channel: ChannelRow) {
+  const appParityCandidates = createAppParityMpingoCandidates(channel)
+  if (appParityCandidates?.length) {
+    return appParityCandidates
+  }
+
   const canonicalSources = [
     {
       id: 'primary',

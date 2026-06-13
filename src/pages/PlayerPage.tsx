@@ -3,7 +3,10 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useCatalogOutlet } from '../app/catalogOutlet'
 import { channelStreamIdentityDigest } from '../lib/catalog'
 import { logPlayback } from '../lib/playbackDebug'
-import { isStreamDirectHlsDelivery } from '../lib/playbackMime'
+import {
+  isMpingoNurPlayerGateway,
+  isStreamDirectHlsDelivery,
+} from '../lib/playbackMime'
 import { useHlsPlayback } from '../hooks/useHlsPlayback'
 import {
   PING_MS,
@@ -225,6 +228,9 @@ export function PlayerPage() {
   )
   const embedSrc =
     embedPlayback && activeSource ? activeSource.playbackUrl : ''
+  const directMpingoEmbed = Boolean(
+    embedSrc && isMpingoNurPlayerGateway(embedSrc),
+  )
   const hlsSrc =
     !embedPlayback && channel?.playbackReadiness === 'ready' && activeSource
       ? activeSource.playbackUrl
@@ -950,8 +956,15 @@ export function PlayerPage() {
               className="player-screen__embed"
               src={embedSrc}
               allow="autoplay; fullscreen; picture-in-picture; encrypted-media; clipboard-read; clipboard-write; display-capture"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-presentation allow-popups-to-escape-sandbox"
-              referrerPolicy="no-referrer-when-downgrade"
+              {...(directMpingoEmbed
+                ? {}
+                : {
+                    sandbox:
+                      'allow-scripts allow-same-origin allow-forms allow-presentation allow-popups-to-escape-sandbox',
+                  })}
+              referrerPolicy={
+                directMpingoEmbed ? 'strict-origin-when-cross-origin' : 'no-referrer-when-downgrade'
+              }
               loading="eager"
               onLoad={() => {
                 setIframeLoaded(true)

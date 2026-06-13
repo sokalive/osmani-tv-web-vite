@@ -54,6 +54,17 @@ export function extractStreamDirectTokenTargets(url: string | null | undefined):
   }
 }
 
+/** Mpingo/Nur gateway pages loaded directly by the Android app WebView (`raw.url`). */
+export function isMpingoNurPlayerGateway(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string') {
+    return false
+  }
+
+  return /https?:\/\/(?:[^/]+\.)?mpingotv\.com\/v\d+\/player\.php(?:$|[/?#])/i.test(
+    url.trim(),
+  )
+}
+
 export function isStreamDirectDeliveryUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') {
     return false
