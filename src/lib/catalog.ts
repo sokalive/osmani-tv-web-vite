@@ -134,6 +134,37 @@ function toProxyUrl(
   return `${proxyBaseUrl}?${params.toString()}`
 }
 
+function rewriteAdminDeliveryUrlForWebClient(url: string) {
+  if (typeof window === 'undefined') {
+    return url
+  }
+
+  try {
+    const parsed = new URL(url)
+    const isDelivery =
+      /\/stream-direct(?:$|[/?#])/i.test(parsed.pathname) ||
+      /\/stream-proxy(?:$|[/?#])/i.test(parsed.pathname)
+
+    if (!isDelivery) {
+      return url
+    }
+
+    const adminProxyBase = resolveBaseUrl(env.osmaniAdminApiUrl).replace(/\/+$/, '')
+    const allowedHosts = new Set([
+      new URL(adminProxyBase, window.location.origin).hostname,
+      'osmani-admin-api.onrender.com',
+    ])
+
+    if (allowedHosts.has(parsed.hostname)) {
+      return `${adminProxyBase}${parsed.pathname}${parsed.search}`
+    }
+  } catch {
+    return url
+  }
+
+  return url
+}
+
 function resolveBackendPlaybackUrl(rawUrl: unknown) {
   const value = asString(rawUrl)
   if (!value) {
@@ -141,7 +172,7 @@ function resolveBackendPlaybackUrl(rawUrl: unknown) {
   }
 
   if (/^https?:\/\//i.test(value)) {
-    return value
+    return rewriteAdminDeliveryUrlForWebClient(value)
   }
 
   if (value.startsWith('//')) {
@@ -330,6 +361,8 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
     pickRecord(raw.stream_headers) ??
     pickRecord(raw.streamHeaders) ??
     pickRecord(raw.headers)
+  const streamProxyBlock = pickRecord(raw.streamProxy)
+  const proxyHeadersBlock = pickRecord(streamProxyBlock?.headers)
 
   return {
     id: String(
@@ -426,6 +459,28 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
       playbackBlock?.backupPlayback2,
       playbackBlock?.backup_playback_2,
     ),
+    directStreamUrl: coalesceString(
+      raw.direct_stream_url,
+      raw.directStreamUrl,
+      streamProxyBlock?.directPrimaryUrl,
+      streamProxyBlock?.direct_primary_url,
+      playbackBlock?.direct_stream_url,
+      playbackBlock?.directStreamUrl,
+    ),
+    directStreamBackup1: coalesceString(
+      raw.direct_stream_url_backup1,
+      raw.directStreamUrlBackup1,
+      raw.direct_stream_url_backup_1,
+      streamProxyBlock?.directBackup1Url,
+      playbackBlock?.direct_stream_url_backup1,
+    ),
+    directStreamBackup2: coalesceString(
+      raw.direct_stream_url_backup2,
+      raw.directStreamUrlBackup2,
+      raw.direct_stream_url_backup_2,
+      streamProxyBlock?.directBackup2Url,
+      playbackBlock?.direct_stream_url_backup2,
+    ),
     deliveryPath: coalesceString(
       raw.deliveryPath,
       raw.delivery_path,
@@ -435,6 +490,8 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
       streamBlock?.delivery_path,
       playbackBlock?.deliveryPath,
       playbackBlock?.delivery_path,
+      streamProxyBlock?.directRoute,
+      streamProxyBlock?.route,
     ),
     streamProxy: coalesceString(
       raw.streamProxy,
@@ -444,6 +501,8 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
       streamBlock?.streamProxy,
       streamBlock?.stream_proxy,
       playbackBlock?.streamProxy,
+      streamProxyBlock?.route,
+      streamProxyBlock?.directRoute,
     ),
     origin: coalesceString(
       raw.origin,
@@ -451,6 +510,7 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
       headersBlock?.origin,
       streamBlock?.origin,
       playbackBlock?.origin,
+      proxyHeadersBlock?.origin,
     ),
     referer: coalesceString(
       raw.referer,
@@ -463,6 +523,8 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
       streamBlock?.referer,
       streamBlock?.referrer,
       playbackBlock?.referer,
+      proxyHeadersBlock?.referer,
+      proxyHeadersBlock?.referrer,
     ),
     userAgent: coalesceString(
       raw.userAgent,
@@ -473,6 +535,8 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
       streamBlock?.userAgent,
       streamBlock?.user_agent,
       playbackBlock?.userAgent,
+      proxyHeadersBlock?.userAgent,
+      proxyHeadersBlock?.user_agent,
     ),
   }
 }
@@ -535,17 +599,43 @@ function findServerHealthForChannel(
 
 function createPlaybackCandidates(channel: ChannelRow) {
   const canonicalSources = [
-    { id: 'primary', label: 'Primary', url: channel.playbackUrl },
-    { id: 'backup-1', label: 'Backup 1', url: channel.backupPlayback1 },
-    { id: 'backup-2', label: 'Backup 2', url: channel.backupPlayback2 },
+    {
+      id: 'primary',
+      label: 'Primary',
+      url: channel.playbackUrl,
+      directUrl: channel.directStreamUrl,
+    },
+    {
+      id: 'backup-1',
+      label: 'Backup 1',
+      url: channel.backupPlayback1,
+      directUrl: channel.directStreamBackup1,
+    },
+    {
+      id: 'backup-2',
+      label: 'Backup 2',
+      url: channel.backupPlayback2,
+      directUrl: channel.directStreamBackup2,
+    },
   ]
 
-  if (canonicalSources.some((source) => source.url)) {
+  if (canonicalSources.some((source) => source.url || source.directUrl)) {
     return canonicalSources.reduce<PlaybackCandidate[]>((list, source) => {
-      const playbackUrl = enforceSecureOriginHttpHlsThroughProxy(
-        channel,
-        buildCanonicalPlaybackUrl(channel, source.url),
-      )
+      const sourceUrl = asString(source.url)
+      const directUrl = asString(source.directUrl)
+      if (!sourceUrl && !directUrl) {
+        return list
+      }
+
+      const playbackUrl = directUrl
+        ? enforceSecureOriginHttpHlsThroughProxy(
+            channel,
+            resolveBackendPlaybackUrl(directUrl),
+          )
+        : enforceSecureOriginHttpHlsThroughProxy(
+            channel,
+            buildCanonicalPlaybackUrl(channel, sourceUrl),
+          )
       if (!playbackUrl) {
         return list
       }
@@ -554,7 +644,7 @@ function createPlaybackCandidates(channel: ChannelRow) {
       list.push({
         id: source.id,
         label: source.label,
-        sourceUrl: source.url,
+        sourceUrl: sourceUrl || directUrl,
         playbackUrl,
         deliveryPath: channel.deliveryPath,
         streamProxy: channel.streamProxy,
