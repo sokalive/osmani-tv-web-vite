@@ -481,6 +481,14 @@ export function normalizeChannel(raw: RawChannelRecord): ChannelRow {
       streamProxyBlock?.directBackup2Url,
       playbackBlock?.direct_stream_url_backup2,
     ),
+    proxyPlaybackUrl: coalesceString(
+      raw.proxy_playback_url,
+      raw.proxyPlaybackUrl,
+      streamProxyBlock?.primaryUrl,
+      streamProxyBlock?.primary_url,
+      playbackBlock?.proxy_playback_url,
+      playbackBlock?.proxyPlaybackUrl,
+    ),
     deliveryPath: coalesceString(
       raw.deliveryPath,
       raw.delivery_path,
@@ -597,45 +605,59 @@ function findServerHealthForChannel(
   )
 }
 
+function resolveCanonicalPlaybackCandidateUrl(
+  channel: ChannelRow,
+  source: { id: string; url: string },
+) {
+  const sourceUrl = asString(source.url)
+  if (!sourceUrl && source.id !== 'primary') {
+    return ''
+  }
+
+  if (source.id === 'primary' && channel.proxyPlaybackUrl) {
+    return resolveBackendPlaybackUrl(channel.proxyPlaybackUrl)
+  }
+
+  if (!sourceUrl) {
+    return ''
+  }
+
+  return buildCanonicalPlaybackUrl(channel, sourceUrl)
+}
+
 function createPlaybackCandidates(channel: ChannelRow) {
   const canonicalSources = [
     {
       id: 'primary',
       label: 'Primary',
-      url: channel.playbackUrl,
-      directUrl: channel.directStreamUrl,
+      url: channel.playbackUrl || channel.proxyPlaybackUrl,
     },
     {
       id: 'backup-1',
       label: 'Backup 1',
       url: channel.backupPlayback1,
-      directUrl: channel.directStreamBackup1,
     },
     {
       id: 'backup-2',
       label: 'Backup 2',
       url: channel.backupPlayback2,
-      directUrl: channel.directStreamBackup2,
     },
   ]
 
-  if (canonicalSources.some((source) => source.url || source.directUrl)) {
+  if (
+    canonicalSources.some((source) => source.url) ||
+    channel.proxyPlaybackUrl
+  ) {
     return canonicalSources.reduce<PlaybackCandidate[]>((list, source) => {
       const sourceUrl = asString(source.url)
-      const directUrl = asString(source.directUrl)
-      if (!sourceUrl && !directUrl) {
+      if (!sourceUrl && !(source.id === 'primary' && channel.proxyPlaybackUrl)) {
         return list
       }
 
-      const playbackUrl = directUrl
-        ? enforceSecureOriginHttpHlsThroughProxy(
-            channel,
-            resolveBackendPlaybackUrl(directUrl),
-          )
-        : enforceSecureOriginHttpHlsThroughProxy(
-            channel,
-            buildCanonicalPlaybackUrl(channel, sourceUrl),
-          )
+      const playbackUrl = enforceSecureOriginHttpHlsThroughProxy(
+        channel,
+        resolveCanonicalPlaybackCandidateUrl(channel, source),
+      )
       if (!playbackUrl) {
         return list
       }
@@ -644,7 +666,7 @@ function createPlaybackCandidates(channel: ChannelRow) {
       list.push({
         id: source.id,
         label: source.label,
-        sourceUrl: sourceUrl || directUrl,
+        sourceUrl: sourceUrl || channel.proxyPlaybackUrl,
         playbackUrl,
         deliveryPath: channel.deliveryPath,
         streamProxy: channel.streamProxy,
@@ -696,7 +718,10 @@ function createPlaybackCandidates(channel: ChannelRow) {
 
 function getPlaybackState(channel: ChannelRow, candidates: PlaybackCandidate[]) {
   const usesCanonicalPlayback = Boolean(
-    channel.playbackUrl || channel.backupPlayback1 || channel.backupPlayback2,
+    channel.playbackUrl ||
+      channel.backupPlayback1 ||
+      channel.backupPlayback2 ||
+      channel.proxyPlaybackUrl,
   )
 
   if (candidates.length === 0) {
@@ -749,7 +774,10 @@ export function toChannelViewModel(
   const playbackCandidates = createPlaybackCandidates(channel)
   const playbackState = getPlaybackState(channel, playbackCandidates)
   const usesCanonicalPlayback = Boolean(
-    channel.playbackUrl || channel.backupPlayback1 || channel.backupPlayback2,
+    channel.playbackUrl ||
+      channel.backupPlayback1 ||
+      channel.backupPlayback2 ||
+      channel.proxyPlaybackUrl,
   )
   const isLive =
     healthStatus === 'online'

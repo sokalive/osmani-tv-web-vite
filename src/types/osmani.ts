@@ -115,8 +115,10 @@ export type ChannelRow = {
   playbackUrl: string
   backupPlayback1: string
   backupPlayback2: string
-  /** Signed `/stream-direct?token=…` URL from admin (preferred web embed delivery). */
+  /** Signed `/stream-direct?token=…` URL from admin delivery contract. */
   directStreamUrl: string
+  /** Admin-composed `/stream-proxy?url=…&origin=…&ua=…` browser playback URL. */
+  proxyPlaybackUrl: string
   directStreamBackup1: string
   directStreamBackup2: string
   deliveryPath: string
