@@ -1,5 +1,9 @@
 import { env } from '../config/env'
-import { isLikelyHlsManifestUrl, isMpingoNurPlayerGateway } from './playbackMime'
+import {
+  isLikelyHlsManifestUrl,
+  isMpingoNurPlayerGateway,
+  isStreamDirectDeliveryUrl,
+} from './playbackMime'
 import type {
   BannerRecord,
   ChannelCategory,
@@ -614,10 +618,6 @@ function resolveCanonicalPlaybackCandidateUrl(
     return ''
   }
 
-  if (isMpingoNurPlayerGateway(sourceUrl)) {
-    return sourceUrl
-  }
-
   if (source.id === 'primary' && channel.proxyPlaybackUrl) {
     return resolveBackendPlaybackUrl(channel.proxyPlaybackUrl)
   }
@@ -629,43 +629,88 @@ function resolveCanonicalPlaybackCandidateUrl(
   return buildCanonicalPlaybackUrl(channel, sourceUrl)
 }
 
-function createAppParityMpingoCandidates(channel: ChannelRow) {
-  const appStyleSources = [
-    { id: 'primary', label: 'Primary', url: channel.url },
-    { id: 'backup-1', label: 'Backup 1', url: channel.backupStream1 },
-    { id: 'backup-2', label: 'Backup 2', url: channel.backupStream2 },
-  ]
+function resolveMpingoWebPlaybackUrl(channel: ChannelRow, rawUrl: string) {
+  const value = asString(rawUrl)
+  if (!value) {
+    return ''
+  }
 
+  if (isStreamDirectDeliveryUrl(value) || looksLikeProxyEndpoint(value)) {
+    return resolveBackendPlaybackUrl(value)
+  }
+
+  if (isMpingoNurPlayerGateway(value)) {
+    const proxied = asString(channel.proxyPlaybackUrl)
+    if (proxied) {
+      return resolveBackendPlaybackUrl(proxied)
+    }
+
+    return buildCanonicalPlaybackUrl(channel, value)
+  }
+
+  return resolveBackendPlaybackUrl(value)
+}
+
+function createMpingoWebCandidates(channel: ChannelRow) {
   if (!isMpingoNurPlayerGateway(channel.url)) {
     return null
   }
 
-  return appStyleSources.reduce<PlaybackCandidate[]>((list, source) => {
-    const playbackUrl = asString(source.url)
-    if (!playbackUrl || !isMpingoNurPlayerGateway(playbackUrl)) {
+  const directSources = [
+    { id: 'primary', label: 'Primary', url: channel.directStreamUrl },
+    { id: 'backup-1', label: 'Backup 1', url: channel.directStreamBackup1 },
+    { id: 'backup-2', label: 'Backup 2', url: channel.directStreamBackup2 },
+  ]
+
+  const candidates = directSources.reduce<PlaybackCandidate[]>((list, source) => {
+    const playbackUrl = resolveMpingoWebPlaybackUrl(channel, source.url)
+    if (!playbackUrl) {
       return list
     }
 
     list.push({
       id: source.id,
       label: source.label,
-      sourceUrl: playbackUrl,
+      sourceUrl: source.url || channel.url,
       playbackUrl,
-      deliveryPath: '',
-      streamProxy: '',
-      usesBackendDelivery: false,
+      deliveryPath: channel.deliveryPath,
+      streamProxy: channel.streamProxy,
+      usesBackendDelivery: true,
       isDirectManifest: false,
       embedPlayback: true,
     })
 
     return list
   }, [])
+
+  if (candidates.length > 0) {
+    return candidates
+  }
+
+  const proxyFallback = resolveMpingoWebPlaybackUrl(channel, channel.proxyPlaybackUrl)
+  if (!proxyFallback) {
+    return null
+  }
+
+  return [
+    {
+      id: 'primary',
+      label: 'Primary',
+      sourceUrl: channel.proxyPlaybackUrl || channel.url,
+      playbackUrl: proxyFallback,
+      deliveryPath: channel.deliveryPath,
+      streamProxy: channel.streamProxy,
+      usesBackendDelivery: true,
+      isDirectManifest: false,
+      embedPlayback: true,
+    },
+  ]
 }
 
 function createPlaybackCandidates(channel: ChannelRow) {
-  const appParityCandidates = createAppParityMpingoCandidates(channel)
-  if (appParityCandidates?.length) {
-    return appParityCandidates
+  const mpingoWebCandidates = createMpingoWebCandidates(channel)
+  if (mpingoWebCandidates?.length) {
+    return mpingoWebCandidates
   }
 
   const canonicalSources = [

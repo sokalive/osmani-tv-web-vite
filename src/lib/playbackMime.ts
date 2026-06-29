@@ -65,6 +65,36 @@ export function isMpingoNurPlayerGateway(url: string | null | undefined): boolea
   )
 }
 
+/** Web embed delivery for Mpingo/Nur (stream-direct token, stream-proxy wrapper, or player.php). */
+export function isMpingoWebEmbedDelivery(url: string | null | undefined): boolean {
+  if (!url || typeof url !== 'string') {
+    return false
+  }
+
+  const value = url.trim()
+  if (isMpingoNurPlayerGateway(value)) {
+    return true
+  }
+
+  if (isStreamDirectDeliveryUrl(value)) {
+    return extractStreamDirectTokenTargets(value).some((target) =>
+      isMpingoNurPlayerGateway(target),
+    )
+  }
+
+  try {
+    const parsed = new URL(value, 'http://localhost')
+    const inner = parsed.searchParams.get('url')
+    if (inner && isMpingoNurPlayerGateway(decodeURIComponent(inner))) {
+      return true
+    }
+  } catch {
+    return false
+  }
+
+  return false
+}
+
 export function isStreamDirectDeliveryUrl(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') {
     return false

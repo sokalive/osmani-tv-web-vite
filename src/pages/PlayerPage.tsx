@@ -4,7 +4,7 @@ import { useCatalogOutlet } from '../app/catalogOutlet'
 import { channelStreamIdentityDigest } from '../lib/catalog'
 import { logPlayback } from '../lib/playbackDebug'
 import {
-  isMpingoNurPlayerGateway,
+  isMpingoWebEmbedDelivery,
   isStreamDirectHlsDelivery,
 } from '../lib/playbackMime'
 import { useHlsPlayback } from '../hooks/useHlsPlayback'
@@ -228,9 +228,7 @@ export function PlayerPage() {
   )
   const embedSrc =
     embedPlayback && activeSource ? activeSource.playbackUrl : ''
-  const directMpingoEmbed = Boolean(
-    embedSrc && isMpingoNurPlayerGateway(embedSrc),
-  )
+  const mpingoWebEmbed = Boolean(embedSrc && isMpingoWebEmbedDelivery(embedSrc))
   const hlsSrc =
     !embedPlayback && channel?.playbackReadiness === 'ready' && activeSource
       ? activeSource.playbackUrl
@@ -956,15 +954,13 @@ export function PlayerPage() {
               className="player-screen__embed"
               src={embedSrc}
               allow="autoplay; fullscreen; picture-in-picture; encrypted-media; clipboard-read; clipboard-write; display-capture"
-              {...(directMpingoEmbed
+              {...(mpingoWebEmbed
                 ? {}
                 : {
                     sandbox:
                       'allow-scripts allow-same-origin allow-forms allow-presentation allow-popups-to-escape-sandbox',
                   })}
-              referrerPolicy={
-                directMpingoEmbed ? 'strict-origin-when-cross-origin' : 'no-referrer-when-downgrade'
-              }
+              referrerPolicy={mpingoWebEmbed ? 'no-referrer' : 'no-referrer-when-downgrade'}
               loading="eager"
               onLoad={() => {
                 setIframeLoaded(true)
